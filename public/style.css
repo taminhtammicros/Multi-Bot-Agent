@@ -423,6 +423,10 @@ p {
   background: #243c60;
   color: #8ab9ff;
 }
+.logo.telegram {
+  background: #17384c;
+  color: #5cc8ff;
+}
 .logo.hermes {
   background: #332b48;
   color: var(--purple);

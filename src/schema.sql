@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS agents (
  last_checked timestamptz, last_ok timestamptz, latency_ms int, error text
 );
 INSERT INTO agents(id,base_url,model) VALUES ('hermes','http://127.0.0.1:8642/v1','hermes-agent'),('openclaw','http://127.0.0.1:18789/v1','openclaw') ON CONFLICT DO NOTHING;
-INSERT INTO settings VALUES ('routing','{"preferred":"auto","failureThreshold":3,"recoverySeconds":60,"paused":false}'),('zalo','{"allowUsers":[],"allowGroups":[],"groupsEnabled":false}') ON CONFLICT DO NOTHING;
+INSERT INTO settings VALUES ('routing','{"preferred":"auto","failureThreshold":3,"recoverySeconds":60,"paused":false}'),('zalo','{"allowUsers":[],"allowGroups":[],"groupsEnabled":false}'),('telegram','{}') ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS conversations(id text PRIMARY KEY, title text NOT NULL, source text NOT NULL, thread_id text, thread_type int, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());
 CREATE TABLE IF NOT EXISTS messages(id uuid PRIMARY KEY, conversation_id text NOT NULL REFERENCES conversations(id), role text NOT NULL, content text NOT NULL, agent text, external_id text UNIQUE, created_at timestamptz DEFAULT now());
 CREATE TABLE IF NOT EXISTS tasks(id uuid PRIMARY KEY, conversation_id text NOT NULL REFERENCES conversations(id), message_id uuid NOT NULL UNIQUE REFERENCES messages(id), status text NOT NULL DEFAULT 'queued', agent text, result text, error text, parent_id uuid REFERENCES tasks(id), generation bigint, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());
@@ -114,6 +114,12 @@ CREATE TABLE IF NOT EXISTS owner_group_sends (
  sent_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS owner_group_sends_pending ON owner_group_sends(status,created_at);
+CREATE TABLE IF NOT EXISTS telegram_link_codes (
+ code_hash text PRIMARY KEY,
+ expires_at timestamptz NOT NULL,
+ used_at timestamptz,
+ chat_id text
+);
 CREATE TABLE IF NOT EXISTS chat_sources (
  id uuid PRIMARY KEY,account_id text NOT NULL,kind text NOT NULL,uid text NOT NULL,
  source_type text NOT NULL,name text NOT NULL,locator text NOT NULL DEFAULT '',

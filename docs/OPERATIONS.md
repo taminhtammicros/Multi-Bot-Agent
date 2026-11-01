@@ -72,6 +72,12 @@ Lệnh gửi tin chữ rõ ràng theo mẫu `nhắn tin vào nhóm <group_id> n�
 
 Owner vẫn phải được phép nhắn theo chính sách DM/nhóm. Owner không vượt qua quyền công cụ, guard hoặc giới hạn an toàn. Nhận diện Owner bằng UID có tính xác thực; yêu cầu viết tự nhiên chưa đủ rõ sẽ được chuyển cho agent hỏi bổ sung thay vì tự suy đoán.
 
+## Telegram cảnh báo
+
+Trong **Kết nối**, tạo bot riêng bằng `@BotFather`, nhập token và lưu. Hub xác thực bằng `getMe`, lưu token đã mã hóa trong PostgreSQL rồi polling Telegram `getUpdates`. Bấm **Nối tài khoản nhận**, mở link riêng và gửi `/start` trong chat riêng với bot; mã nối chỉ dùng một lần và hết hạn sau 10 phút. **Gửi tin thử** kiểm tra đường gửi. Bot báo khi trạng thái Zalo hoặc Agent chuyển giữa online/offline. Gỡ kết nối sẽ xóa token, link người nhận và mã chờ.
+
+Bot cảnh báo này chưa nhận câu hỏi để chuyển cho Hermes/OpenClaw; nó chỉ dùng để nhận cảnh báo hệ thống.
+
 ## Khi trả lời chậm hoặc có lượt AI trả rỗng
 
 - **Kết nối API online không xác nhận model tạo được câu trả lời.** Xem thời gian lượt AI và lỗi gần nhất trên trang Kết nối/Tổng quan. Health check không xóa lỗi lượt AI; chỉ lượt AI thành công mới xóa lỗi này.

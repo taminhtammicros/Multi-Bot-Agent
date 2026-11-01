@@ -30,6 +30,7 @@ import { initSecrets, equal, encrypt } from "./security.js";
 import { checkAgent, reconcile } from "./agents.js";
 import { Engine, enqueue, recover } from "./engine.js";
 import { ZaloBridge } from "./zalo.js";
+import { TelegramBridge } from "./telegram.js";
 import {
   listContacts,
   setContactAccess,
@@ -66,6 +67,7 @@ for (const [route, file, type] of [
 const sessions = new Map<string, number>(),
   loginAttempts = new Map<string, { count: number; until: number }>();
 const bridge = new ZaloBridge(),
+  telegram = new TelegramBridge(),
   engine = new Engine();
 let dbError = false;
 app.addHook("onRequest", async (req, reply) => {
@@ -152,8 +154,8 @@ app.post("/api/logout", async (req, reply) => {
   return { ok: true };
 });
 app.get("/api/overview", async () => {
-  const [agents, counts, tasks, events, leadership, config] = await Promise.all(
-    [
+  const [agents, counts, tasks, events, leadership, config, telegramState] =
+    await Promise.all([
       query(
         "SELECT id,enabled,base_url,model,health,failures,last_checked,last_ok,latency_ms,error,last_run_error,last_run_at,last_run_ms,(secret <> '') AS has_key FROM agents ORDER BY id",
       ),
@@ -164,8 +166,8 @@ app.get("/api/overview", async () => {
       query("SELECT * FROM events ORDER BY id DESC LIMIT 12"),
       query("SELECT * FROM leadership WHERE id=1"),
       setting("routing"),
-    ],
-  );
+      telegram.state(),
+    ]);
   return {
     agents: agents.rows,
     counts: counts.rows[0],
@@ -174,6 +176,7 @@ app.get("/api/overview", async () => {
     leadership: leadership.rows[0],
     routing: config,
     zalo: bridge.state(),
+    telegram: telegramState,
     database: { status: "online", engine: "PostgreSQL", ha: false },
     worker: {
       busy: engine.busy,
@@ -468,6 +471,16 @@ app.get("/api/zalo", async () => ({
   ...bridge.state(),
   policy: await setting("zalo"),
 }));
+app.get("/api/telegram", async () => telegram.state());
+app.put("/api/telegram", async (req) => {
+  const { token: botToken } = z
+    .object({ token: z.string().trim().min(1).max(200) })
+    .parse(req.body);
+  return telegram.configure(botToken);
+});
+app.delete("/api/telegram", async () => telegram.disconnect());
+app.post("/api/telegram/link", async () => telegram.createLink());
+app.post("/api/telegram/test", async () => telegram.test());
 app.get("/api/zalo/contacts", async () =>
   listContacts(bridge.state().accountId),
 );
@@ -808,12 +821,46 @@ app.get("/health", async (req, reply) => {
 });
 let checking = false,
   sending = false;
+let healthPrimed = false;
+let observedZalo = false;
+let previousZaloConnected = false;
+const previousAgentHealth = new Map<string, string>();
 const healthTimer = setInterval(async () => {
   if (checking) return;
   checking = true;
   try {
+    const before = (
+      await query("SELECT id,health FROM agents WHERE enabled=true")
+    ).rows;
     await Promise.all(["hermes", "openclaw"].map(checkAgent));
+    const after = (
+      await query("SELECT id,health FROM agents WHERE enabled=true")
+    ).rows;
+    for (const agent of after) {
+      const oldHealth = previousAgentHealth.get(agent.id);
+      if (healthPrimed && oldHealth && oldHealth !== agent.health) {
+        void telegram.notify(
+          agent.health === "online"
+            ? `✅ Agent ${agent.id} đã kết nối lại.`
+            : `⚠️ Agent ${agent.id} đang mất kết nối (${agent.health}).`,
+        );
+      }
+      previousAgentHealth.set(agent.id, agent.health);
+    }
+    if (!healthPrimed)
+      for (const agent of before)
+        previousAgentHealth.set(agent.id, agent.health);
+    healthPrimed = true;
     if (!engine.busy) await reconcile();
+    const zaloConnected = bridge.state().status === "connected";
+    if (observedZalo && zaloConnected !== previousZaloConnected)
+      void telegram.notify(
+        zaloConnected
+          ? "✅ Kết nối Zalo đã được khôi phục."
+          : "⚠️ Kết nối Zalo bị gián đoạn. Dashboard đang tự phục hồi; kiểm tra QR nếu trạng thái không trở lại.",
+      );
+    observedZalo = true;
+    previousZaloConnected = zaloConnected;
     dbError = false;
   } catch {
     dbError = true;
@@ -842,6 +889,9 @@ const sendTimer = setInterval(async () => {
     sending = false;
   }
 }, 500);
+void (async function pollTelegram() {
+  while (true) await telegram.pollOnce();
+})();
 void bridge.restore().catch(() => {});
 await app.listen({
   host: process.env.HOST || "127.0.0.1",
