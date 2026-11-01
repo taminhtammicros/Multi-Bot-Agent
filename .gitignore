@@ -1,0 +1,8 @@
+node_modules/
+.env
+data/
+backups/
+test-results/
+*.log
+__pycache__/
+*.pyc

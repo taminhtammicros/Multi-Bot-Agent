@@ -1,0 +1,54 @@
+{
+  "name": "zalo-agent-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "check": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:integration": "tsx --test tests/*.integration.ts",
+    "db:up": "docker compose up -d db",
+    "db:backup": "node scripts/backup.mjs",
+    "test:browser": "node scripts/browser-check.mjs",
+    "format": "prettier --write src public tests scripts",
+    "test:zalo-browser": "node scripts/zalo-browser-check.mjs",
+    "test:contacts-browser": "node scripts/contacts-browser-check.mjs",
+    "test:scroll-browser": "node scripts/scroll-browser-check.mjs",
+    "test:recovery-browser": "node scripts/recovery-browser-check.mjs",
+    "test:groups-browser": "node scripts/groups-browser-check.mjs",
+    "test:reply-modes-browser": "node scripts/reply-modes-browser-check.mjs",
+    "test:chat-profiles-browser": "node scripts/chat-profiles-browser-check.mjs",
+    "test:hermes-guard": "python3 -m unittest discover -s tests -p '*_test.py'",
+    "hermes:install-guard": "node scripts/install-hermes-guard.mjs",
+    "openclaw:connect": "node scripts/connect-openclaw.mjs",
+    "openclaw:worker": "node scripts/configure-openclaw-worker.mjs",
+    "test:delegation-browser": "node scripts/delegation-browser-check.mjs",
+    "hermes:summary:setup": "tsx scripts/install-hermes-summary.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/multipart": "^10.1.6",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.2.3",
+    "fastify": "^5.6.2",
+    "mammoth": "^1.13.0",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.16.3",
+    "undici": "^8.12.3",
+    "zca-js": "^2.1.2",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.5",
+    "playwright": "^1.56.1",
+    "prettier": "^3.9.10",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

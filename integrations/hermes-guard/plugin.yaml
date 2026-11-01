@@ -1,0 +1,5 @@
+name: zhub-policy
+version: "1.0.0"
+description: "Per-request command guard for Zalo Agent Hub. Only applies to zhub_ sessions."
+hooks:
+  - pre_tool_call
