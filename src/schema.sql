@@ -19,6 +19,16 @@ ALTER TABLE runs ADD COLUMN IF NOT EXISTS output_tokens int;
 UPDATE runs r SET phase='delegate' FROM tasks t WHERE t.id=r.task_id AND t.parent_id IS NOT NULL AND r.phase='main';
 CREATE TABLE IF NOT EXISTS memories(id uuid PRIMARY KEY, conversation_id text REFERENCES conversations(id), content text NOT NULL, created_at timestamptz DEFAULT now());
 CREATE TABLE IF NOT EXISTS events(id bigserial PRIMARY KEY, kind text NOT NULL, message text NOT NULL, created_at timestamptz DEFAULT now());
+CREATE TABLE IF NOT EXISTS calendar_jobs (
+ id uuid PRIMARY KEY, title text NOT NULL, prompt text NOT NULL,
+ account_id text NOT NULL, thread_id text NOT NULL, thread_type int NOT NULL CHECK(thread_type IN (0,1)),
+ conversation_id text NOT NULL REFERENCES conversations(id),
+ recurrence text NOT NULL CHECK(recurrence IN ('once','daily','weekly')),
+ next_run_at timestamptz NOT NULL, enabled boolean NOT NULL DEFAULT true,
+ locked_at timestamptz, last_run_at timestamptz, last_task_id uuid REFERENCES tasks(id),
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS calendar_jobs_due ON calendar_jobs(next_run_at) WHERE enabled;
 CREATE TABLE IF NOT EXISTS outbox(id uuid PRIMARY KEY, task_id uuid NOT NULL UNIQUE REFERENCES tasks(id), conversation_id text NOT NULL REFERENCES conversations(id), content text NOT NULL, status text NOT NULL DEFAULT 'pending', error text, created_at timestamptz DEFAULT now());
 CREATE TABLE IF NOT EXISTS leadership(id int PRIMARY KEY CHECK(id=1), agent text, generation bigint NOT NULL DEFAULT 0, changed_at timestamptz DEFAULT now());
 INSERT INTO leadership(id) VALUES (1) ON CONFLICT DO NOTHING;

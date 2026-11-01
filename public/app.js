@@ -27,6 +27,7 @@ const when = (v) =>
 const names = {
   overview: "Tổng quan",
   channels: "Zalo & Telegram",
+  calendar: "Lịch · Calendar",
   connections: "Kết nối Agents",
   conversations: "Hội thoại",
   tasks: "Công việc",
@@ -37,6 +38,8 @@ const names = {
 const paths = {
   overview: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
   channels: "M4 6h16v12H4z M8 10h3 M8 14h8 M16 6V4 M8 6V4",
+  calendar:
+    "M4 5h16v16H4z M8 3v4 M16 3v4 M4 9h16 M8 13h.01 M12 13h.01 M16 13h.01 M8 17h.01 M12 17h.01",
   connections: "M8 12h8 M7 7H4v10h3 M17 7h3v10h-3 M8 4v16 M16 4v16",
   conversations: "M4 4h16v12H9l-5 4z",
   tasks: "M8 5h12v16H4V5h4 M8 3h8v4H8z M8 12h8 M8 16h5",
@@ -175,7 +178,156 @@ function eventList(events) {
         "Nhật ký sẽ được cập nhật khi anh thiết lập kết nối.",
       );
 }
+const calendarZone = "Asia/Ho_Chi_Minh";
+const localDateKey = (value) => {
+  const p = new Intl.DateTimeFormat("en-CA", {
+    timeZone: calendarZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  return `${p.find((x) => x.type === "year").value}-${p.find((x) => x.type === "month").value}-${p.find((x) => x.type === "day").value}`;
+};
+const localClock = (value) =>
+  new Intl.DateTimeFormat("vi-VN", {
+    timeZone: calendarZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+const localDateTimeInput = (value) =>
+  `${localDateKey(value)}T${localClock(value)}`;
+const monthLabel = (value) =>
+  new Intl.DateTimeFormat("vi-VN", {
+    timeZone: calendarZone,
+    month: "long",
+    year: "numeric",
+  }).format(value);
+let calendarMonth = new Date();
+function calendarItemsForDay(job, dateKey) {
+  const start = localDateKey(job.next_run_at);
+  if (dateKey < start) return false;
+  if (job.recurrence === "once") return dateKey === start;
+  if (job.recurrence === "daily") return true;
+  const days = Math.round(
+    (Date.parse(`${dateKey}T12:00:00Z`) - Date.parse(`${start}T12:00:00Z`)) /
+      86400000,
+  );
+  return days >= 0 && days % 7 === 0;
+}
+function calendarPage(data, targets) {
+  const monthFirst = new Date(
+    `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, "0")}-01T12:00:00+07:00`,
+  );
+  const offset = (monthFirst.getUTCDay() + 6) % 7;
+  const gridStart = monthFirst.getTime() - offset * 86400000;
+  const today = localDateKey(Date.now());
+  const jobs = data.jobs || [];
+  const days = Array.from({ length: 42 }, (_, i) => {
+    const date = new Date(gridStart + i * 86400000);
+    const key = localDateKey(date);
+    const list = jobs
+      .filter((j) => calendarItemsForDay(j, key))
+      .sort((a, b) =>
+        localClock(a.next_run_at).localeCompare(localClock(b.next_run_at)),
+      );
+    return `<div class="calendar-day${key === today ? " today" : ""}${key.slice(0, 7) !== localDateKey(monthFirst).slice(0, 7) ? " outside" : ""}" data-calendar-day="${key}"><div class="calendar-day-head"><span>${date.getUTCDate()}</span><button data-calendar-add="${key}" title="Tạo lịch ngày này">＋</button></div>${list
+      .slice(0, 3)
+      .map(
+        (j) =>
+          `<button class="calendar-event${j.enabled ? "" : " paused"}" data-calendar-edit="${j.id}" title="${escape(j.title)}">${localClock(j.next_run_at)} · ${escape(j.title)}</button>`,
+      )
+      .join(
+        "",
+      )}${list.length > 3 ? `<small class="muted">+${list.length - 3} lịch</small>` : ""}</div>`;
+  }).join("");
+  const upcoming = jobs
+    .filter((j) => j.enabled)
+    .sort((a, b) => new Date(a.next_run_at) - new Date(b.next_run_at))
+    .slice(0, 8);
+  return (
+    heading(
+      "Lịch · Calendar",
+      "Lên lịch để Hermes/OpenClaw xử lý và gửi kết quả vào hội thoại Zalo đã được cấp quyền. Múi giờ: Việt Nam (UTC+7).",
+      '<button class="primary" data-calendar-add="">＋ Tạo lịch</button>',
+    ) +
+    `<section class="card calendar-card"><div class="calendar-toolbar"><button data-calendar-shift="-1" aria-label="Tháng trước">‹</button><h2>${monthLabel(monthFirst)}</h2><button data-calendar-shift="1" aria-label="Tháng sau">›</button><button data-calendar-today class="subtle">Tháng này</button><span class="small muted">${jobs.filter((j) => j.enabled).length} lịch đang bật</span></div><div class="calendar-grid calendar-weekdays">${["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map((d) => `<strong>${d}</strong>`).join("")}</div><div class="calendar-grid">${days}</div></section><div class="calendar-bottom"><section class="card"><div class="card-head"><h2>Sắp tới</h2><span class="badge">${upcoming.length}</span></div>${upcoming.length ? `<div class="calendar-upcoming">${upcoming.map((j) => `<button data-calendar-edit="${j.id}"><span class="calendar-date">${escape(new Date(j.next_run_at).toLocaleString("vi-VN", { timeZone: calendarZone, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }))}</span><span><strong>${escape(j.title)}</strong><small>${escape(j.target_name)} · ${j.recurrence === "once" ? "Một lần" : j.recurrence === "daily" ? "Hằng ngày" : "Hằng tuần"}</small></span>${badge(j.enabled ? "online" : "disconnected", j.enabled ? "Đang bật" : "Tạm dừng")}</button>`).join("")}</div>` : empty("Chưa có lịch hẹn", "Tạo lịch để giao việc hoặc nhắc bot vào một hội thoại Zalo.")}</section><section class="card"><div class="card-head"><h2>Nguyên tắc gửi lịch</h2></div><div class="card-body"><p class="small">Lịch được lưu trong PostgreSQL chung và tự đưa vào hàng đợi của agent đang làm Main. Nếu agent tạm offline, việc nằm trong hàng đợi cho tới khi có agent hoạt động.</p><p class="small">Chỉ chọn được DM/nhóm đang được cấp quyền. Nếu quyền bị thu hồi trước giờ chạy, lịch tự tạm dừng để tránh gửi nhầm.</p></div></section></div>`
+  );
+}
+function calendarDialog(item, targets, dateKey = "") {
+  const d = item
+    ? new Date(item.next_run_at)
+    : dateKey
+      ? new Date(`${dateKey}T10:00:00+07:00`)
+      : new Date(Date.now() + 3600000);
+  if (!item) {
+    if (d.getTime() < Date.now() + 60000) d.setTime(Date.now() + 3600000);
+    d.setSeconds(0, 0);
+  }
+  const targetValue = item ? `${item.thread_type}:${item.thread_id}` : "";
+  modal.innerHTML = `<div class="row spread"><div><div class="eyebrow">LỊCH · ZALO</div><h2>${item ? "Sửa lịch" : "Tạo lịch"}</h2></div><button type="button" data-close>Đóng</button></div><form id="calendar-form"><label>Tên lịch<input name="title" maxlength="120" required value="${escape(item?.title || "")}" placeholder="Ví dụ: Tổng hợp tin buổi sáng"></label><label>Bot cần làm gì?<textarea name="prompt" maxlength="2000" rows="4" required placeholder="Mô tả rõ việc cần làm hoặc nội dung cần nhắc">${escape(item?.prompt || "")}</textarea></label><label>Gửi kết quả vào<select name="target" required><option value="">Chọn DM hoặc nhóm được cấp quyền…</option>${targets.map((t) => `<option value="${t.threadType}:${t.uid}" ${targetValue === `${t.threadType}:${t.uid}` ? "selected" : ""}>${t.threadType === 1 ? "Nhóm" : "DM"} · ${escape(t.name)}</option>`).join("")}</select></label><div class="row calendar-form-row"><label>Ngày giờ (giờ Việt Nam)<input type="datetime-local" name="runAt" required value="${localDateTimeInput(d)}"></label><label>Lặp lại<select name="recurrence"><option value="once" ${item?.recurrence === "once" || !item ? "selected" : ""}>Một lần</option><option value="daily" ${item?.recurrence === "daily" ? "selected" : ""}>Hằng ngày</option><option value="weekly" ${item?.recurrence === "weekly" ? "selected" : ""}>Hằng tuần</option></select></label></div><p class="small muted">Nội dung sẽ được gửi thông qua Hermes/OpenClaw, rồi phản hồi vào hội thoại Zalo đã chọn.</p><div id="calendar-error" class="small red"></div><div class="modal-actions"><button type="button" data-close>Hủy</button>${item ? `<button type="button" id="calendar-toggle">${item.enabled ? "Tạm dừng" : "Bật lại"}</button><button type="button" class="danger" id="calendar-delete">Xóa lịch</button>` : ""}<button class="primary">${item ? "Lưu thay đổi" : "Tạo lịch"}</button></div></form>`;
+  if (!modal.open) modal.showModal();
+  modal
+    .querySelectorAll("[data-close]")
+    .forEach((b) => (b.onclick = () => modal.close()));
+  modal.querySelector("#calendar-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const [threadType, threadId] = String(f.get("target")).split(":");
+    const body = {
+      title: f.get("title"),
+      prompt: f.get("prompt"),
+      threadId,
+      threadType: Number(threadType),
+      runAt: f.get("runAt"),
+      recurrence: f.get("recurrence"),
+    };
+    const submit = e.currentTarget.querySelector("button.primary");
+    submit.disabled = true;
+    try {
+      await api(item ? `/calendar/${item.id}` : "/calendar", {
+        method: item ? "PUT" : "POST",
+        body,
+      });
+      modal.close();
+      toast(item ? "Đã cập nhật lịch" : "Đã tạo lịch");
+      await render();
+    } catch (err) {
+      modal.querySelector("#calendar-error").textContent = err.message;
+      submit.disabled = false;
+    }
+  };
+  modal
+    .querySelector("#calendar-toggle")
+    ?.addEventListener("click", async () => {
+      try {
+        await api(`/calendar/${item.id}/toggle`, {
+          method: "POST",
+          body: { enabled: !item.enabled },
+        });
+        modal.close();
+        await render();
+      } catch (e) {
+        toast(e.message);
+      }
+    });
+  modal
+    .querySelector("#calendar-delete")
+    ?.addEventListener("click", async () => {
+      if (!confirm(`Xóa lịch “${item.title}”?`)) return;
+      try {
+        await api(`/calendar/${item.id}`, { method: "DELETE" });
+        modal.close();
+        toast("Đã xóa lịch");
+        await render();
+      } catch (e) {
+        toast(e.message);
+      }
+    });
+}
 let dmContactsData = { accountId: null, contacts: [] };
+let calendarData = { jobs: [] },
+  calendarTargetsData = [];
 let dmSearch = "",
   dmFilter = "all";
 let contactKind = "all";
@@ -1163,20 +1315,63 @@ function bind() {
       (b) => (b.onclick = () => showTelegram().catch((e) => toast(e.message))),
     );
   document.querySelectorAll("[data-telegram-link]").forEach(
-    (b) => (b.onclick = async () => {
-      try {
-        await showTelegram();
-        modal.querySelector("#telegram-link")?.click();
-      } catch (e) { toast(e.message); }
-    }),
+    (b) =>
+      (b.onclick = async () => {
+        try {
+          await showTelegram();
+          modal.querySelector("#telegram-link")?.click();
+        } catch (e) {
+          toast(e.message);
+        }
+      }),
   );
   document.querySelectorAll("[data-telegram-test]").forEach(
-    (b) => (b.onclick = async () => {
-      try {
-        await showTelegram();
-        modal.querySelector("#telegram-test")?.click();
-      } catch (e) { toast(e.message); }
-    }),
+    (b) =>
+      (b.onclick = async () => {
+        try {
+          await showTelegram();
+          modal.querySelector("#telegram-test")?.click();
+        } catch (e) {
+          toast(e.message);
+        }
+      }),
+  );
+  document.querySelectorAll("[data-calendar-shift]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        calendarMonth = new Date(
+          calendarMonth.getFullYear(),
+          calendarMonth.getMonth() + Number(b.dataset.calendarShift),
+          1,
+        );
+        void render();
+      }),
+  );
+  document
+    .querySelector("[data-calendar-today]")
+    ?.addEventListener("click", () => {
+      calendarMonth = new Date();
+      void render();
+    });
+  document
+    .querySelectorAll("[data-calendar-add]")
+    .forEach(
+      (b) =>
+        (b.onclick = () =>
+          calendarDialog(
+            null,
+            calendarTargetsData,
+            b.dataset.calendarAdd || "",
+          )),
+    );
+  document.querySelectorAll("[data-calendar-edit]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        const item = calendarData.jobs.find(
+          (j) => j.id === b.dataset.calendarEdit,
+        );
+        if (item) calendarDialog(item, calendarTargetsData);
+      }),
   );
   document.querySelectorAll("[data-reconnect-zalo]").forEach(
     (b) =>
@@ -1319,6 +1514,15 @@ async function render({ background = false } = {}) {
       dmContactsData = await api("/zalo/contacts");
       html = channels();
     }
+    if (page === "calendar") {
+      const [data, targets] = await Promise.all([
+        api("/calendar"),
+        api("/calendar/targets"),
+      ]);
+      calendarData = data;
+      calendarTargetsData = (targets.targets || []).filter((t) => t.allowed);
+      html = calendarPage(data, calendarTargetsData);
+    }
     if (page === "connections") {
       html = connections();
     }
@@ -1400,7 +1604,14 @@ setInterval(async () => {
     if (page === "conversations") await updateMessages();
     else if (
       !modal.open &&
-      ["overview", "tasks", "events", "connections", "channels"].includes(page)
+      [
+        "overview",
+        "tasks",
+        "events",
+        "connections",
+        "channels",
+        "calendar",
+      ].includes(page)
     )
       await render({ background: true });
   } catch {

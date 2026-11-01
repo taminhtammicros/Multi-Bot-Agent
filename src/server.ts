@@ -29,6 +29,14 @@ import { query, pool, migrate, event, setting } from "./db.js";
 import { initSecrets, equal, encrypt } from "./security.js";
 import { checkAgent, reconcile } from "./agents.js";
 import { Engine, enqueue, recover } from "./engine.js";
+import {
+  calendarTargets,
+  listCalendar,
+  saveCalendar,
+  removeCalendar,
+  setCalendarEnabled,
+  tickCalendar,
+} from "./calendar.js";
 import { ZaloBridge } from "./zalo.js";
 import { TelegramBridge } from "./telegram.js";
 import {
@@ -573,6 +581,68 @@ app.put("/api/zalo/policy", async (req) => {
   await event("config", "Cập nhật quyền truy cập Zalo");
   return { ok: true };
 });
+const calendarInput = z.object({
+  title: z.string().trim().min(1).max(120),
+  prompt: z.string().trim().min(1).max(2000),
+  threadId: z.string().regex(/^\d{1,30}$/),
+  threadType: z.union([z.literal(0), z.literal(1)]),
+  runAt: z.string().max(16),
+  recurrence: z.enum(["once", "daily", "weekly"]),
+});
+app.get("/api/calendar", async () => ({ jobs: await listCalendar() }));
+app.get("/api/calendar/targets", async () =>
+  calendarTargets(bridge.state().accountId || null),
+);
+app.post("/api/calendar", async (req) => {
+  const data = calendarInput.parse(req.body);
+  const accountId = bridge.state().accountId;
+  if (!accountId)
+    throw Object.assign(new Error("Hãy kết nối Zalo trước khi tạo lịch."), {
+      statusCode: 409,
+    });
+  const { targets } = await calendarTargets(accountId);
+  const target = targets.find(
+    (x: any) =>
+      x.uid === data.threadId && x.threadType === data.threadType && x.allowed,
+  );
+  if (!target)
+    throw Object.assign(new Error("Hội thoại chưa được cấp quyền nhận tin."), {
+      statusCode: 403,
+    });
+  await saveCalendar({ ...data, targetName: target.name }, accountId);
+  return { ok: true };
+});
+app.put("/api/calendar/:id", async (req) => {
+  const { id } = z.object({ id: z.uuid() }).parse(req.params);
+  const data = calendarInput.parse(req.body);
+  const accountId = bridge.state().accountId;
+  if (!accountId)
+    throw Object.assign(new Error("Chưa xác định được tài khoản Zalo."), {
+      statusCode: 409,
+    });
+  const { targets } = await calendarTargets(accountId);
+  const target = targets.find(
+    (x: any) =>
+      x.uid === data.threadId && x.threadType === data.threadType && x.allowed,
+  );
+  if (!target)
+    throw Object.assign(new Error("Hội thoại chưa được cấp quyền nhận tin."), {
+      statusCode: 403,
+    });
+  await saveCalendar({ ...data, targetName: target.name }, accountId, id);
+  return { ok: true };
+});
+app.post("/api/calendar/:id/toggle", async (req) => {
+  const { id } = z.object({ id: z.uuid() }).parse(req.params);
+  const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
+  await setCalendarEnabled(id, enabled);
+  return { ok: true };
+});
+app.delete("/api/calendar/:id", async (req) => {
+  const { id } = z.object({ id: z.uuid() }).parse(req.params);
+  await removeCalendar(id);
+  return { ok: true };
+});
 app.get(
   "/api/conversations",
   async () =>
@@ -870,6 +940,7 @@ const healthTimer = setInterval(async () => {
 }, 10000);
 const workTimer = setInterval(async () => {
   try {
+    await tickCalendar();
     await engine.tick();
     dbError = false;
   } catch {

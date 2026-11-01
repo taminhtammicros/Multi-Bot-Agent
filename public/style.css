@@ -1054,12 +1054,165 @@ dialog form {
 .chat-profile-dialog section > p {
   margin-bottom: 18px;
 }
+.calendar-card {
+  overflow: hidden;
+}
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.calendar-toolbar h2 {
+  margin: 0 auto 0 0;
+  text-transform: capitalize;
+}
+.calendar-toolbar button {
+  padding: 8px 12px;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.calendar-weekdays {
+  border-bottom: 1px solid var(--line);
+  background: #1c2028;
+}
+.calendar-weekdays strong {
+  padding: 10px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+.calendar-day {
+  min-height: 112px;
+  min-width: 0;
+  padding: 7px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.calendar-day:nth-child(7n) {
+  border-right: 0;
+}
+.calendar-day.outside {
+  background: #14171d;
+  color: var(--muted);
+}
+.calendar-day.today {
+  background: rgba(145, 230, 189, 0.07);
+}
+.calendar-day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+.calendar-day-head button {
+  padding: 2px 7px;
+  line-height: 1.2;
+  color: var(--muted);
+}
+.calendar-event {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  margin-top: 4px;
+  padding: 5px 6px;
+  border: 0;
+  border-left: 2px solid var(--accent);
+  border-radius: 4px;
+  background: #222c2b;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.calendar-event.paused {
+  border-left-color: var(--muted);
+  opacity: 0.65;
+}
+.calendar-bottom {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+.calendar-upcoming {
+  display: grid;
+}
+.calendar-upcoming button {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  padding: 14px 18px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  text-align: left;
+}
+.calendar-upcoming button:hover {
+  background: #20242c;
+}
+.calendar-upcoming button > span:nth-child(2) {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.calendar-upcoming small {
+  color: var(--muted);
+}
+.calendar-date {
+  min-width: 105px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.calendar-form-row {
+  align-items: flex-start;
+}
+.calendar-form-row label {
+  flex: 1;
+}
 #dm-contacts [data-chat-settings] {
   display: block;
   margin-bottom: 7px;
   font-size: 12px;
 }
 @media (max-width: 760px) {
+  .calendar-bottom {
+    grid-template-columns: 1fr;
+  }
+  .calendar-day {
+    min-height: 82px;
+    padding: 4px;
+  }
+  .calendar-weekdays strong {
+    padding: 8px 2px;
+    font-size: 10px;
+  }
+  .calendar-event {
+    padding: 4px 3px;
+    font-size: 10px;
+  }
+  .calendar-toolbar {
+    flex-wrap: wrap;
+  }
+  .calendar-toolbar h2 {
+    min-width: 40%;
+  }
+  .calendar-date {
+    min-width: 82px;
+    font-size: 12px;
+  }
+  .calendar-form-row {
+    flex-direction: column;
+  }
+  .calendar-form-row label {
+    width: 100%;
+  }
   .chat-profile-dialog {
     padding: 18px;
   }
