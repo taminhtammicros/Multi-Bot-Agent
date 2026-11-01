@@ -755,7 +755,7 @@ function channels() {
       "Quản lý tài khoản Zalo, quyền hội thoại và bot Telegram nhận cảnh báo.",
       '<button data-dm-jump class="primary">Quản lý quyền chat →</button>',
     ) +
-    `<div class="connection-grid"><section class="card"><div class="card-head"><div class="row"><div class="logo zalo">Z</div><div><h2>Zalo cá nhân</h2><p class="small">Kênh hội thoại</p></div></div>${badge(snapshot.zalo.status)}</div><div class="card-body"><p class="small">Đăng nhập bằng mã QR để bot nhận và phản hồi tin nhắn trên một tài khoản Zalo.</p><div class="detail"><span>Tài khoản</span><span>${escape(snapshot.zalo.accountId || "Chưa đăng nhập")}</span></div><div class="detail"><span>Thư viện</span><span>zca-js</span></div><div class="detail"><span>Truy cập</span><span>Danh sách cho phép</span></div>${snapshot.zalo.error ? `<p class="small">${escape(snapshot.zalo.error)}</p>` : ""}</div><footer><button data-zalo class="primary">${snapshot.zalo.status === "connected" ? "Quản lý Zalo" : "Kết nối Zalo"}</button><button data-policy>Phân quyền</button></footer></section><section class="card"><div class="card-head"><div class="row"><div class="logo telegram">T</div><div><h2>Telegram</h2><p class="small">Cảnh báo sự cố</p></div></div>${badge(snapshot.telegram?.status || "disconnected")}</div><div class="card-body"><p class="small">Kết nối bot riêng do @BotFather tạo để nhận cảnh báo khi Zalo hoặc Agents mất kết nối.</p><div class="detail"><span>Bot</span><span>${snapshot.telegram?.botUsername ? "@" + escape(snapshot.telegram.botUsername) : "Chưa cấu hình"}</span></div><div class="detail"><span>Tài khoản nhận</span><span>${snapshot.telegram?.linked ? escape(snapshot.telegram.chatName || "Đã liên kết") : "Chưa liên kết"}</span></div><div class="detail"><span>Token</span><span>${snapshot.telegram?.tokenMasked ? escape(snapshot.telegram.tokenMasked) : "Chưa lưu"}</span></div>${snapshot.telegram?.lastError ? `<p class="small red">${escape(snapshot.telegram.lastError)}</p>` : ""}</div><footer><button data-telegram class="primary">${snapshot.telegram?.tokenMasked ? "Quản lý Telegram" : "Kết nối Telegram"}</button></footer></section></div><div class="note warn">Kênh Telegram này dùng để nhận cảnh báo. Hội thoại người dùng với Agents vẫn được xử lý trên Zalo.</div>` +
+    `<div class="connection-grid"><section class="card"><div class="card-head"><div class="row"><div class="logo zalo">Z</div><div><h2>Zalo cá nhân</h2><p class="small">Kênh hội thoại</p></div></div>${badge(snapshot.zalo.status)}</div><div class="card-body"><p class="small">Đăng nhập bằng mã QR để bot nhận và phản hồi tin nhắn trên một tài khoản Zalo.</p><div class="detail"><span>Tài khoản</span><span>${escape(snapshot.zalo.accountId || "Chưa đăng nhập")}</span></div><div class="detail"><span>Thư viện</span><span>zca-js</span></div><div class="detail"><span>Truy cập</span><span>Danh sách cho phép</span></div>${snapshot.zalo.error ? `<p class="small">${escape(snapshot.zalo.error)}</p>` : ""}</div><footer><button data-zalo class="primary">${snapshot.zalo.status === "connected" ? "Quản lý Zalo" : "Kết nối Zalo"}</button><button data-policy>Phân quyền</button></footer></section><section class="card"><div class="card-head"><div class="row"><div class="logo telegram">T</div><div><h2>Telegram</h2><p class="small">Cảnh báo sự cố</p></div></div>${badge(snapshot.telegram?.status || "disconnected")}</div><div class="card-body"><p class="small">Kết nối bot riêng do @BotFather tạo để nhận cảnh báo khi Zalo hoặc Agents mất kết nối.</p><div class="detail"><span>Bot</span><span>${snapshot.telegram?.botUsername ? "@" + escape(snapshot.telegram.botUsername) : "Chưa cấu hình"}</span></div><div class="detail"><span>Tài khoản nhận</span><span>${snapshot.telegram?.linked ? escape(snapshot.telegram.chatName || "Đã liên kết") : "Chưa liên kết"}</span></div><div class="detail"><span>Token</span><span>${snapshot.telegram?.tokenMasked ? escape(snapshot.telegram.tokenMasked) : "Chưa lưu"}</span></div>${snapshot.telegram?.lastError ? `<p class="small red">${escape(snapshot.telegram.lastError)}</p>` : ""}</div><footer><button data-telegram class="primary">${snapshot.telegram?.tokenMasked ? "Cấu hình bot" : "Kết nối bot"}</button><button data-telegram-link ${!snapshot.telegram?.tokenMasked || snapshot.telegram?.linked ? "disabled" : ""}>${snapshot.telegram?.linked ? "Đã nối người nhận" : "Nối người nhận"}</button><button data-telegram-test ${!snapshot.telegram?.linked ? "disabled" : ""}>Gửi tin thử</button></footer></section></div><div class="note warn">Telegram nhận cảnh báo sự cố của Zalo và Agents. Hội thoại người dùng với Agents vẫn được xử lý trên Zalo.</div>` +
     dmContactsPanel() +
     zaloRecoveryPanel() +
     zaloDiagnostics()
@@ -1162,6 +1162,22 @@ function bind() {
     .forEach(
       (b) => (b.onclick = () => showTelegram().catch((e) => toast(e.message))),
     );
+  document.querySelectorAll("[data-telegram-link]").forEach(
+    (b) => (b.onclick = async () => {
+      try {
+        await showTelegram();
+        modal.querySelector("#telegram-link")?.click();
+      } catch (e) { toast(e.message); }
+    }),
+  );
+  document.querySelectorAll("[data-telegram-test]").forEach(
+    (b) => (b.onclick = async () => {
+      try {
+        await showTelegram();
+        modal.querySelector("#telegram-test")?.click();
+      } catch (e) { toast(e.message); }
+    }),
+  );
   document.querySelectorAll("[data-reconnect-zalo]").forEach(
     (b) =>
       (b.onclick = async () => {
