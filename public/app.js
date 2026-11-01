@@ -26,7 +26,8 @@ const when = (v) =>
     : "Chưa kiểm tra";
 const names = {
   overview: "Tổng quan",
-  connections: "Kết nối",
+  channels: "Zalo & Telegram",
+  connections: "Kết nối Agents",
   conversations: "Hội thoại",
   tasks: "Công việc",
   memory: "Bộ nhớ chung",
@@ -35,6 +36,7 @@ const names = {
 };
 const paths = {
   overview: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
+  channels: "M4 6h16v12H4z M8 10h3 M8 14h8 M16 6V4 M8 6V4",
   connections: "M8 12h8 M7 7H4v10h3 M17 7h3v10h-3 M8 4v16 M16 4v16",
   conversations: "M4 4h16v12H9l-5 4z",
   tasks: "M8 5h12v16H4V5h4 M8 3h8v4H8z M8 12h8 M8 16h5",
@@ -128,7 +130,7 @@ function shell() {
     )
     .join(
       "",
-    )}</nav><div class="sidebar-bottom"><div><span class="dot green"></span>Môi trường cục bộ</div><div class="small">Một tài khoản Zalo<br>Hai agent · Một nguồn ngữ cảnh</div><button id="logout" class="subtle">Đăng xuất ↗</button></div></aside><main class="main"><header class="topbar"><span>Không gian làm việc <span class="muted">/</span> <strong>${names[page]}</strong></span><div class="top-actions"><span class="small">${new Date().toLocaleDateString("vi-VN", { day: "numeric", month: "long", year: "numeric" })}</span><span class="badge">LOCAL</span><span class="avatar" title="Quản trị viên">AD</span></div></header><div class="content" id="content"></div></main></div>`;
+    )}</nav><div class="sidebar-bottom"><div><span class="dot green"></span>Môi trường cục bộ</div><div class="small">Zalo & Telegram<br>Hai Agents · Một nguồn ngữ cảnh</div><button id="logout" class="subtle">Đăng xuất ↗</button></div></aside><main class="main"><header class="topbar"><span>Không gian làm việc <span class="muted">/</span> <strong>${names[page]}</strong></span><div class="top-actions"><span class="small">${new Date().toLocaleDateString("vi-VN", { day: "numeric", month: "long", year: "numeric" })}</span><span class="badge">LOCAL</span><span class="avatar" title="Quản trị viên">AD</span></div></header><div class="content" id="content"></div></main></div>`;
   document.querySelector("#logout").onclick = async () => {
     await api("/logout", { method: "POST" });
     login();
@@ -144,7 +146,7 @@ function overview() {
     heading(
       "Mọi kết nối. Một điểm điều phối.",
       "Theo dõi bot, agent và tính liên tục của cuộc hội thoại.",
-      `<button data-go="connections" class="primary">＋ Thiết lập kết nối</button>`,
+      `<button data-go="channels" class="primary">＋ Thiết lập kênh chat</button>`,
     ) +
     (!online
       ? `<div class="banner">Bắt đầu bằng cách kết nối Hermes hoặc OpenClaw. Yêu cầu sẽ được lưu chờ đến khi có agent hoạt động.</div>`
@@ -739,11 +741,21 @@ function zaloDiagnostics() {
 function connections() {
   return (
     heading(
-      "Kết nối không gian làm việc",
-      "Kết nối một hoặc cả hai agent. Hệ thống tự chọn Main theo cấu hình hiện có.",
+      "Kết nối Agents",
+      "Cấu hình Hermes và OpenClaw. Hệ thống tự chọn Main theo trạng thái và chính sách hiện có.",
+      '<button data-go="channels" class="primary">Mở Zalo & Telegram →</button>',
+    ) +
+    `<div class="connection-grid">${snapshot.agents.map((a) => `<section class="card"><div class="card-head"><div class="row"><div class="logo ${a.id}">${a.id === "hermes" ? "H" : "O"}</div><div><h2>${a.id === "hermes" ? "Hermes" : "OpenClaw"}</h2><p class="small">${a.id === "hermes" ? "Điều phối chính" : "Thực thi & dự phòng"}</p></div></div>${badge(a.health)}</div><div class="card-body"><p class="small">${a.id === "hermes" ? "Hiểu yêu cầu, sử dụng ngữ cảnh chung và giao nhiệm vụ cho OpenClaw khi cần." : "Nhận nhiệm vụ từ Hermes hoặc làm Main khi Hermes chưa kết nối / downtime."}</p><div class="detail"><span>API endpoint</span><span class="mono">${escape(a.base_url)}</span></div><div class="detail"><span>Agent target</span><span class="mono">${escape(a.model)}</span></div><div class="detail"><span>API key</span><span>${a.has_key ? "Đã lưu mã hóa" : "Chưa thiết lập"}</span></div>${a.last_run_ms != null ? `<div class="detail"><span>Lượt AI gần nhất</span><span>${(a.last_run_ms / 1000).toFixed(1)} giây</span></div>` : ""}${a.last_run_error ? `<div class="note warn">Lượt AI gần nhất bị lỗi: ${escape(a.last_run_error)}</div>` : ""}${a.error ? `<p class="small">${escape(a.error)}</p>` : ""}<p class="small muted">Online xác nhận kết nối API; khả năng trả lời còn phụ thuộc model/provider.</p></div><footer><button data-agent="${a.id}" class="primary">Cấu hình</button><button data-check="${a.id}" ${a.enabled ? "" : "disabled"}>Kiểm tra</button></footer></section>`).join("")}</div><div class="note">Các kênh Zalo và Telegram được quản lý riêng trong trang Zalo & Telegram.</div>`
+  );
+}
+function channels() {
+  return (
+    heading(
+      "Zalo & Telegram",
+      "Quản lý tài khoản Zalo, quyền hội thoại và bot Telegram nhận cảnh báo.",
       '<button data-dm-jump class="primary">Quản lý quyền chat →</button>',
     ) +
-    `<div class="connection-grid"><section class="card"><div class="card-head"><div class="row"><div class="logo zalo">Z</div><div><h2>Zalo cá nhân</h2><p class="small">Kênh hội thoại</p></div></div>${badge(snapshot.zalo.status)}</div><div class="card-body"><p class="small">Đăng nhập bằng mã QR để bot nhận và phản hồi tin nhắn trên một tài khoản Zalo.</p><div class="detail"><span>Tài khoản</span><span>${escape(snapshot.zalo.accountId || "Chưa đăng nhập")}</span></div><div class="detail"><span>Thư viện</span><span>zca-js</span></div><div class="detail"><span>Truy cập</span><span>Danh sách cho phép</span></div>${snapshot.zalo.error ? `<p class="small">${escape(snapshot.zalo.error)}</p>` : ""}</div><footer><button data-zalo class="primary">${snapshot.zalo.status === "connected" ? "Quản lý Zalo" : "Kết nối Zalo"}</button><button data-policy>Phân quyền</button></footer></section><section class="card"><div class="card-head"><div class="row"><div class="logo telegram">T</div><div><h2>Telegram</h2><p class="small">Cảnh báo sự cố</p></div></div>${badge(snapshot.telegram?.status || "disconnected")}</div><div class="card-body"><p class="small">Kết nối bot do @BotFather tạo để nhận cảnh báo khi Zalo hoặc Agents mất kết nối.</p><div class="detail"><span>Bot</span><span>${snapshot.telegram?.botUsername ? "@" + escape(snapshot.telegram.botUsername) : "Chưa cấu hình"}</span></div><div class="detail"><span>Tài khoản nhận</span><span>${snapshot.telegram?.linked ? escape(snapshot.telegram.chatName || "Đã liên kết") : "Chưa liên kết"}</span></div><div class="detail"><span>Token</span><span>${snapshot.telegram?.tokenMasked ? escape(snapshot.telegram.tokenMasked) : "Chưa lưu"}</span></div>${snapshot.telegram?.lastError ? `<p class="small red">${escape(snapshot.telegram.lastError)}</p>` : ""}</div><footer><button data-telegram class="primary">${snapshot.telegram?.tokenMasked ? "Quản lý Telegram" : "Kết nối Telegram"}</button></footer></section>${snapshot.agents.map((a) => `<section class="card"><div class="card-head"><div class="row"><div class="logo ${a.id}">${a.id === "hermes" ? "H" : "O"}</div><div><h2>${a.id === "hermes" ? "Hermes" : "OpenClaw"}</h2><p class="small">${a.id === "hermes" ? "Điều phối chính" : "Thực thi & dự phòng"}</p></div></div>${badge(a.health)}</div><div class="card-body"><p class="small">${a.id === "hermes" ? "Hiểu yêu cầu, sử dụng ngữ cảnh chung và giao nhiệm vụ cho OpenClaw khi cần." : "Nhận nhiệm vụ từ Hermes hoặc làm Main khi Hermes chưa kết nối / downtime."}</p><div class="detail"><span>API endpoint</span><span class="mono">${escape(a.base_url)}</span></div><div class="detail"><span>Agent target</span><span class="mono">${escape(a.model)}</span></div><div class="detail"><span>API key</span><span>${a.has_key ? "Đã lưu mã hóa" : "Chưa thiết lập"}</span></div>${a.last_run_ms != null ? `<div class="detail"><span>Lượt AI gần nhất</span><span>${(a.last_run_ms / 1000).toFixed(1)} giây</span></div>` : ""}${a.last_run_error ? `<div class="note warn">Lượt AI gần nhất bị lỗi: ${escape(a.last_run_error)}</div>` : ""}${a.error ? `<p class="small">${escape(a.error)}</p>` : ""}<p class="small muted">Online xác nhận kết nối API; khả năng trả lời còn phụ thuộc model/provider.</p></div><footer><button data-agent="${a.id}" class="primary">Cấu hình</button><button data-check="${a.id}" ${a.enabled ? "" : "disabled"}>Kiểm tra</button></footer></section>`).join("")}</div><div class="note warn">Kết nối Zalo cá nhân dùng API không chính thức. Chỉ một bridge được hoạt động; Zalo Web có thể làm gián đoạn listener. Bot chỉ xử lý người dùng/nhóm trong danh sách cho phép.</div>` +
+    `<div class="connection-grid"><section class="card"><div class="card-head"><div class="row"><div class="logo zalo">Z</div><div><h2>Zalo cá nhân</h2><p class="small">Kênh hội thoại</p></div></div>${badge(snapshot.zalo.status)}</div><div class="card-body"><p class="small">Đăng nhập bằng mã QR để bot nhận và phản hồi tin nhắn trên một tài khoản Zalo.</p><div class="detail"><span>Tài khoản</span><span>${escape(snapshot.zalo.accountId || "Chưa đăng nhập")}</span></div><div class="detail"><span>Thư viện</span><span>zca-js</span></div><div class="detail"><span>Truy cập</span><span>Danh sách cho phép</span></div>${snapshot.zalo.error ? `<p class="small">${escape(snapshot.zalo.error)}</p>` : ""}</div><footer><button data-zalo class="primary">${snapshot.zalo.status === "connected" ? "Quản lý Zalo" : "Kết nối Zalo"}</button><button data-policy>Phân quyền</button></footer></section><section class="card"><div class="card-head"><div class="row"><div class="logo telegram">T</div><div><h2>Telegram</h2><p class="small">Cảnh báo sự cố</p></div></div>${badge(snapshot.telegram?.status || "disconnected")}</div><div class="card-body"><p class="small">Kết nối bot riêng do @BotFather tạo để nhận cảnh báo khi Zalo hoặc Agents mất kết nối.</p><div class="detail"><span>Bot</span><span>${snapshot.telegram?.botUsername ? "@" + escape(snapshot.telegram.botUsername) : "Chưa cấu hình"}</span></div><div class="detail"><span>Tài khoản nhận</span><span>${snapshot.telegram?.linked ? escape(snapshot.telegram.chatName || "Đã liên kết") : "Chưa liên kết"}</span></div><div class="detail"><span>Token</span><span>${snapshot.telegram?.tokenMasked ? escape(snapshot.telegram.tokenMasked) : "Chưa lưu"}</span></div>${snapshot.telegram?.lastError ? `<p class="small red">${escape(snapshot.telegram.lastError)}</p>` : ""}</div><footer><button data-telegram class="primary">${snapshot.telegram?.tokenMasked ? "Quản lý Telegram" : "Kết nối Telegram"}</button></footer></section></div><div class="note warn">Kênh Telegram này dùng để nhận cảnh báo. Hội thoại người dùng với Agents vẫn được xử lý trên Zalo.</div>` +
     dmContactsPanel() +
     zaloRecoveryPanel() +
     zaloDiagnostics()
@@ -1287,8 +1299,11 @@ async function render({ background = false } = {}) {
     // In particular, contacts must finish loading before a live refresh commits.
     let html = "";
     if (page === "overview") html = overview();
-    if (page === "connections") {
+    if (page === "channels") {
       dmContactsData = await api("/zalo/contacts");
+      html = channels();
+    }
+    if (page === "connections") {
       html = connections();
     }
     if (page === "conversations") html = await conversations();
@@ -1369,7 +1384,7 @@ setInterval(async () => {
     if (page === "conversations") await updateMessages();
     else if (
       !modal.open &&
-      ["overview", "tasks", "events", "connections"].includes(page)
+      ["overview", "tasks", "events", "connections", "channels"].includes(page)
     )
       await render({ background: true });
   } catch {
