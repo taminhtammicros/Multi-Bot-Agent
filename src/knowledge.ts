@@ -373,10 +373,32 @@ export async function refreshSource(
 export async function sourceList(accountId: string, kind: string, uid: string) {
   return (
     await query(
-      "SELECT id,name,source_type,CASE WHEN source_type='upload' THEN name ELSE locator END AS locator,length(content) AS characters,status,error,updated_at FROM chat_sources WHERE account_id=$1 AND kind=$2 AND uid=$3 ORDER BY created_at",
+      "SELECT id,name,source_type,CASE WHEN source_type='upload' THEN name ELSE locator END AS locator,length(content) AS characters,CASE WHEN source_type='note' THEN content ELSE NULL END AS content,status,error,updated_at FROM chat_sources WHERE account_id=$1 AND kind=$2 AND uid=$3 ORDER BY created_at",
       [accountId, kind, uid],
     )
   ).rows;
+}
+export async function updateNoteSource(
+  accountId: string,
+  kind: string,
+  uid: string,
+  id: string,
+  content: string,
+) {
+  const value = content.trim();
+  if (!value)
+    throw Object.assign(new Error("Ghi chú không được để trống."), {
+      statusCode: 400,
+    });
+  const updated = await query(
+    "UPDATE chat_sources SET content=$5,status='ready',error=null,updated_at=now() WHERE id=$1 AND account_id=$2 AND kind=$3 AND uid=$4 AND source_type='note' RETURNING id,name,length(content)::int AS characters",
+    [id, accountId, kind, uid, value],
+  );
+  if (!updated.rowCount)
+    throw Object.assign(new Error("Không tìm thấy ghi chú này."), {
+      statusCode: 404,
+    });
+  return updated.rows[0];
 }
 export async function removeSource(
   accountId: string,

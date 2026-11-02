@@ -13,6 +13,7 @@ import {
   sourceList,
   removeSource,
   browseLibrary,
+  updateNoteSource,
 } from "./knowledge.js";
 import { guardStatus, policyDir, needsGuard } from "./command-guard.js";
 import { decrypt } from "./security.js";
@@ -367,6 +368,22 @@ app.post(
     return refreshSource(s.accountId, s.kind, s.uid, sourceId);
   },
 );
+app.put("/api/chat-profile/:kind/:uid/sources/:sourceId", async (req) => {
+  const s = profileScope(req);
+  const { sourceId } = z.object({ sourceId: z.uuid() }).parse(req.params);
+  const { content } = z
+    .object({ content: z.string().trim().min(1).max(60000) })
+    .parse(req.body);
+  const source = await updateNoteSource(
+    s.accountId,
+    s.kind,
+    s.uid,
+    sourceId,
+    content,
+  );
+  await event("knowledge", `Đã sửa ghi chú ${s.kind} ${s.uid}`);
+  return { ok: true, source };
+});
 app.delete("/api/chat-profile/:kind/:uid/sources/:sourceId", async (req) => {
   const s = profileScope(req);
   const { sourceId } = z.object({ sourceId: z.uuid() }).parse(req.params);

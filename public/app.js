@@ -337,6 +337,7 @@ async function showChatSettings(target) {
   let state = await api(base + query);
   modal.classList.add("chat-profile-dialog");
   const p = state.profile;
+  let editingNoteId = null;
   modal.innerHTML = `<div class="row spread"><div><div class="eyebrow">${target.kind === "group" ? "NHÓM" : "DM"} · ${escape(target.uid)}</div><h2>Cấu hình ${escape(target.label || target.uid)}</h2></div><button type="button" data-profile-close>Đóng</button></div><nav class="profile-tabs" aria-label="Cấu hình hội thoại">${[
     ["persona", "Tính cách"],
     ["conversation", "Hội thoại"],
@@ -373,6 +374,23 @@ async function showChatSettings(target) {
     )}<p class="small">Độ sâu thực tế phụ thuộc model; hệ thống không yêu cầu hoặc hiển thị suy luận nội bộ. Không bịa link khi chưa có nguồn.</p></section><section data-profile-section="style" hidden><h3>Trình bày câu trả lời</h3><label class="profile-option"><input type="radio" name="presentation" value="color" ${p.presentation === "color" ? "checked" : ""}><span><strong>Màu Xanh · Đỏ · Vàng</strong><small>Xanh cho ý chính, đỏ cho cảnh báo, vàng cho lưu ý; dùng style native của Zalo.</small></span></label><label class="profile-option"><input type="radio" name="presentation" value="plain" ${p.presentation === "plain" ? "checked" : ""}><span><strong>Text đơn giản</strong><small>Màu chữ mặc định của Zalo (đen trên giao diện sáng).</small></span></label><label class="check"><input type="checkbox" name="emoji" ${p.emoji ? "checked" : ""}>Bật thả reaction và dùng emoji trong câu trả lời</label><p class="small">Khi bật, bot có thể thả 👍 cho tin đã nhận vào hàng đợi. Khi tắt, bot không thả reaction mới và bỏ emoji khỏi câu trả lời.</p></section><section data-profile-section="policy" hidden><h3>Thực thi lệnh hệ thống</h3><label class="check"><input type="checkbox" name="systemCommands" ${p.systemCommands ? "checked" : ""}>Cho phép thực thi lệnh hệ thống</label><label>Danh sách lệnh không được phép (mỗi dòng một lệnh/mẫu)<textarea name="deniedCommands" rows="5" maxlength="4000" placeholder="rm -rf&#10;sudo&#10;shutdown">${escape(p.deniedCommands)}</textarea></label><div id="profile-guard-state" class="note ${state.guard.ready ? "" : "warn"}">${state.guard.ready ? "Guard Hermes đang hoạt động." : "Guard Hermes chưa hoạt động; chưa thể lưu chính sách lệnh hạn chế."}</div><p class="small">Guard kiểm tra từng tool call, không chỉ nhắc bằng prompt. Khi có lệnh cấm, chỉ hỗ trợ lệnh đọc trực tiếp và chặn script/chuỗi shell. Đây không phải sandbox hệ điều hành. OpenClaw chưa có guard này: yêu cầu có chính sách hạn chế sẽ bị chặn.</p>${target.kind === "group" ? `<h3>Lời chào thành viên mới</h3><label>Nội dung chào (để trống để tắt)<textarea name="welcome" rows="4" maxlength="2000" placeholder="Chào {members}, mừng bạn đến với {group}!">${escape(p.welcome)}</textarea></label><p class="small">{members} được thay bằng tag thật của thành viên mới; {group} là tên nhóm. Nếu không dùng {members}, bot tự thêm tag vào đầu tin. Chỉ gửi khi nhóm được cấp quyền, bật phản hồi và không ở chế độ Im lặng.</p>` : ""}</section><footer class="profile-footer"><span id="profile-save-state" class="small muted">Thay đổi áp dụng từ lượt xử lý tiếp theo.</span><button type="submit" class="primary">Lưu cấu hình hội thoại</button></footer></form>`;
   if (!modal.open) modal.showModal();
   const form = modal.querySelector("#chat-profile-form");
+  const noteInput = modal.querySelector("#profile-note");
+  const noteAdd = modal.querySelector("#profile-add-note");
+  const noteState = document.createElement("span");
+  noteState.className = "small muted";
+  noteState.hidden = true;
+  const noteCancel = document.createElement("button");
+  noteCancel.type = "button";
+  noteCancel.textContent = "Hủy sửa";
+  noteCancel.hidden = true;
+  noteAdd.before(noteState, noteCancel);
+  noteCancel.onclick = () => {
+    editingNoteId = null;
+    noteInput.value = "";
+    noteAdd.textContent = "Thêm ghi chú";
+    noteState.hidden = true;
+    noteCancel.hidden = true;
+  };
   modal.querySelector("[data-profile-close]").onclick = () => modal.close();
   modal.querySelectorAll("[data-profile-tab]").forEach(
     (b) =>
@@ -482,10 +500,24 @@ async function showChatSettings(target) {
       ? state.sources
           .map(
             (s) =>
-              `<div class="source-item"><div><strong>${escape(s.name)}</strong> <span class="badge">${escape(s.source_type)}</span><p class="small">${escape(s.locator)} · ${s.characters} ký tự · ${when(s.updated_at)}</p></div><div class="row"><button type="button" data-source-refresh="${s.id}">Làm mới</button><button type="button" data-source-remove="${s.id}" class="danger">Gỡ nguồn</button></div></div>`,
+              `<div class="source-item"><div><strong>${escape(s.name)}</strong> <span class="badge">${escape(s.source_type)}</span><p class="small">${escape(s.locator)} · ${s.characters} ký tự · ${when(s.updated_at)}</p></div><div class="row">${s.source_type === "note" ? `<button type="button" data-source-edit="${s.id}">Sửa ghi chú</button>` : ""}<button type="button" data-source-refresh="${s.id}">Làm mới</button><button type="button" data-source-remove="${s.id}" class="danger">Gỡ nguồn</button></div></div>`,
           )
           .join("")
       : empty("Chưa gắn tri thức/skill riêng");
+    el.querySelectorAll("[data-source-edit]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const source = state.sources.find((x) => x.id === b.dataset.sourceEdit);
+        if (!source || source.source_type !== "note") return;
+        editingNoteId = source.id;
+        noteInput.value = source.content || "";
+        noteAdd.textContent = "Lưu thay đổi";
+        noteState.textContent = `Đang sửa ghi chú “${source.name}”.`;
+        noteState.hidden = false;
+        noteCancel.hidden = false;
+        noteInput.focus();
+        noteInput.scrollIntoView({ behavior: "smooth", block: "center" });
+      }),
+    );
     el.querySelectorAll("[data-source-refresh]").forEach(
       (b) =>
         (b.onclick = async () => {
@@ -559,7 +591,20 @@ async function showChatSettings(target) {
     const input = modal.querySelector("#profile-note");
     e.target.disabled = true;
     try {
-      await attach({ type: "note", content: input.value });
+      if (editingNoteId) {
+        await api(base + "/sources/" + editingNoteId + query, {
+          method: "PUT",
+          body: { accountId: target.accountId, content: input.value },
+        });
+        editingNoteId = null;
+        noteState.hidden = true;
+        noteCancel.hidden = true;
+        e.target.textContent = "Thêm ghi chú";
+        await reloadSources();
+        toast("Đã cập nhật ghi chú");
+      } else {
+        await attach({ type: "note", content: input.value });
+      }
       input.value = "";
     } catch (err) {
       toast(err.message);
