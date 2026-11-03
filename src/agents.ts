@@ -123,7 +123,7 @@ export async function callAgent(
     )
       throw new AgentFailure(false, "Thiếu phạm vi nhóm; từ chối gửi model.");
     try {
-      return await groupCompletion(messages);
+      return await groupCompletion(messages, options.profile.model);
     } catch {
       throw new AgentFailure(
         false,

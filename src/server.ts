@@ -51,6 +51,7 @@ import {
 import { ZaloBridge } from "./zalo.js";
 import { TelegramBridge } from "./telegram.js";
 import { claimZaloSetupNotification, getZaloPolicy } from "./zalo-policy.js";
+import { groupModelCatalog } from "./group-model.js";
 import {
   listContacts,
   setContactAccess,
@@ -584,6 +585,7 @@ app.get("/api/agents/:id/catalog", async (req) => {
     ].slice(0, 600),
   };
 });
+app.get("/api/group-model/catalog", async () => groupModelCatalog());
 app.get("/api/zalo", async () => {
   const state = bridge.state();
   return {

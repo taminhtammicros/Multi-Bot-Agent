@@ -5,6 +5,7 @@ import { decrypt } from "./security.js";
 /** Direct inference only. Never forwards group data to a stateful agent gateway. */
 export async function groupCompletion(
   messages: { role: string; content: string }[],
+  modelOverride?: string,
 ) {
   const config = await setting("group_brain_model");
   if (
@@ -30,7 +31,7 @@ export async function groupCompletion(
   if (url.username || url.password || url.search || url.hash)
     throw new Error("Endpoint model nhóm không hợp lệ.");
   const body = JSON.stringify({
-    model: config.model,
+    model: modelOverride?.trim() || config.model,
     messages,
     stream: false,
     max_tokens: 8000,
@@ -87,4 +88,51 @@ export async function groupCompletion(
         : null,
     },
   };
+}
+
+export async function groupModelCatalog() {
+  const config = await setting("group_brain_model");
+  if (
+    !config?.enabled ||
+    config.mode !== "direct-stateless" ||
+    !config.model ||
+    !config.secret ||
+    !config.baseUrl
+  )
+    return { models: [], error: "Model stateless cho nhóm chưa được cấu hình." };
+  let url: URL;
+  try {
+    url = new URL(config.baseUrl);
+  } catch {
+    return { models: [], error: "Endpoint model nhóm không hợp lệ." };
+  }
+  if (
+    (url.protocol !== "https:" &&
+      !(url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname))) ||
+    ["8642", "8643", "18789"].includes(url.port) ||
+    url.username || url.password || url.search || url.hash
+  )
+    return { models: [], error: "Endpoint model nhóm không hợp lệ." };
+  try {
+    const response = await fetch(url.href.replace(/\/$/, "") + "/models", {
+      headers: { Authorization: "Bearer " + decrypt(config.secret) },
+      signal: AbortSignal.timeout(15000),
+      redirect: "error",
+    });
+    if (!response.ok)
+      return { models: [], error: `Không lấy được model: HTTP ${response.status}.` };
+    const payload: any = await response.json();
+    const models = Array.isArray(payload.data)
+      ? payload.data
+          .map((item: any) => String(item?.id || "").trim())
+          .filter((id: string) => id && id.length <= 200)
+          .slice(0, 500)
+          .map((id: string) => ({ id, label: id }))
+      : [];
+    if (!models.some((item: any) => item.id === config.model))
+      models.unshift({ id: config.model, label: config.model + " · mặc định" });
+    return { models };
+  } catch {
+    return { models: [], error: "Không kết nối được danh sách model nhóm." };
+  }
 }

@@ -377,25 +377,29 @@ async function showChatSettings(target) {
   if (target.kind === "group") await renderGroupBrain(base, query, target);
   const form = modal.querySelector("#chat-profile-form");
   if (target.kind === "group") {
-    for (const name of [
-      "brain",
-      "model",
-      "provider",
-      "openClawSupport",
-      "handoffSynthesis",
-      "systemCommands",
-      "deniedCommands",
+    const connection = modal.querySelector(
+      '[data-profile-section="connection"]',
+    );
+    form.elements.brain.closest("label").hidden = true;
+    form.elements.brain.closest("label").nextElementSibling.hidden = true;
+    form.elements.provider.closest("label").hidden = true;
+    connection.insertAdjacentHTML(
+      "afterbegin",
+      '<p class="note">Nhóm dùng endpoint model stateless riêng, không chuyển nội dung sang phiên Hermes/OpenClaw. Chọn model từ endpoint nhóm đã cấu hình; để trống sẽ dùng model mặc định của endpoint.</p>',
+    );
+    for (const title of [
+      "OpenClaw hỗ trợ Hermes",
+      "Hermes tổng hợp sau OpenClaw",
     ]) {
-      form.querySelector(`[name="${name}"]`).disabled = true;
-    }
-    modal.querySelector("#profile-load-models").disabled = true;
-    modal.querySelector("#profile-model-picker").disabled = true;
-    modal
-      .querySelector('[data-profile-section="connection"]')
-      .insertAdjacentHTML(
-        "afterbegin",
-        '<p class="note">Nhóm dùng model riêng không công cụ và không chia sẻ phiên. Các lựa chọn agent bên dưới không áp dụng; chất lượng câu trả lời vẫn điều chỉnh được.</p>',
+      const heading = [...connection.querySelectorAll("h3")].find(
+        (item) => item.textContent.trim() === title,
       );
+      if (heading) {
+        heading.hidden = true;
+        heading.nextElementSibling.hidden = true;
+        heading.nextElementSibling.nextElementSibling.hidden = true;
+      }
+    }
     modal.querySelector("#profile-guard-state").hidden = true;
   }
 
@@ -436,7 +440,8 @@ async function showChatSettings(target) {
       e.target.value.length);
   const modelFields = modal.querySelector("#profile-model-fields");
   const syncBrain = () => {
-    modelFields.hidden = form.elements.brain.value === "auto";
+    modelFields.hidden =
+      target.kind !== "group" && form.elements.brain.value === "auto";
   };
   syncBrain();
   form.elements.brain.onchange = () => {
@@ -451,9 +456,13 @@ async function showChatSettings(target) {
     label.textContent = "Đang tải…";
     try {
       const result = await api(
-        "/agents/" +
-          (form.elements.brain.value === "openclaw" ? "openclaw" : "hermes") +
-          "/catalog",
+        target.kind === "group"
+          ? "/group-model/catalog"
+          : "/agents/" +
+              (form.elements.brain.value === "openclaw"
+                ? "openclaw"
+                : "hermes") +
+              "/catalog",
       );
       modelOptions = result.models;
       modal.querySelector("#profile-model-picker").innerHTML =
@@ -464,7 +473,9 @@ async function showChatSettings(target) {
       label.textContent =
         result.note ||
         result.error ||
-        `${modelOptions.length} model; provider cần có thông tin xác thực trên agent.`;
+        (target.kind === "group"
+          ? `${modelOptions.length} model từ endpoint stateless của nhóm.`
+          : `${modelOptions.length} model; provider cần có thông tin xác thực trên agent.`);
     } catch (err) {
       label.textContent = err.message;
     } finally {
@@ -475,7 +486,8 @@ async function showChatSettings(target) {
     const m = modelOptions[Number(e.target.value)];
     if (e.target.value !== "" && m) {
       form.elements.model.value = m.id;
-      form.elements.provider.value = m.provider || "";
+      if (target.kind !== "group")
+        form.elements.provider.value = m.provider || "";
     }
   };
   form.onsubmit = async (e) => {
@@ -510,7 +522,6 @@ async function showChatSettings(target) {
       if (target.kind === "group") {
         for (const name of [
           "brain",
-          "model",
           "provider",
           "openClawSupport",
           "handoffSynthesis",
@@ -519,7 +530,7 @@ async function showChatSettings(target) {
         ])
           profile[name] = p[name];
       }
-      if (profile.brain === "auto") {
+      if (target.kind !== "group" && profile.brain === "auto") {
         profile.model = "";
         profile.provider = "";
       }
