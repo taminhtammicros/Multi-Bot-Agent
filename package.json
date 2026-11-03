@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
+    "build": "node scripts/build.mjs",
+    "start:prod": "node dist/server.js",
     "check": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:integration": "tsx --test tests/engine.integration.ts",
@@ -33,7 +35,7 @@
     "test:brain:browser": "node scripts/group-brain-browser-check.mjs"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

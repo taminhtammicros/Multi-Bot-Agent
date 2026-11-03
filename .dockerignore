@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+data
+backups
+test-results
+dist
+coverage
+*.log
+__pycache__
+*.pyc

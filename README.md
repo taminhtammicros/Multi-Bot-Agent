@@ -2,18 +2,56 @@
 
 Dashboard tiếng Việt để quản lý một tài khoản Zalo, Hermes và OpenClaw. Giao diện tối tham khảo bố cục SMART-BOT; mã ứng dụng được xây riêng trong workspace này. Không sao chép session, API key hoặc dữ liệu từ dự án tham khảo.
 
-## Chạy trên máy hiện tại
+## Cài và chạy
 
-Yêu cầu: Node.js >=22, Docker Compose. Các cổng riêng của dự án: dashboard `3890`, PostgreSQL `55439`.
+Dự án hỗ trợ chạy ứng dụng **native** hoặc chạy cả ứng dụng và PostgreSQL bằng **Docker Compose**. Dùng Node.js 24 LTS trở lên ở chế độ native; `.nvmrc` chọn Node 24. Không cần clone repo hay cài thư viện Agent riêng để khởi động dashboard. Hermes/OpenClaw là dịch vụ tùy chọn, cần kết nối riêng nếu muốn bot xử lý câu hỏi bằng AI.
+
+### Native trên máy, PostgreSQL bằng Docker
+
+Cài Node.js 24 LTS và Docker Desktop/Engine có Compose. Trên macOS/Linux:
 
 ```sh
-npm ci
 cp .env.example .env
+npm ci
 npm run db:up
 npm start
 ```
 
-Mở **http://127.0.0.1:3890**. Đọc mã đăng nhập trong file `data/admin-token` trên máy; mã được tạo ở lần chạy đầu và không in ra log. Có thể xem bằng trình soạn thảo. Dashboard chỉ bind loopback mặc định.
+Trên PowerShell, thay lệnh sao chép bằng `Copy-Item .env.example .env`. Mặc định PostgreSQL chỉ mở trên loopback cổng `55439`; ứng dụng nghe tại `127.0.0.1:3890`.
+
+### Native với PostgreSQL đã cài sẵn
+
+Cài PostgreSQL, tạo database và user riêng, đặt `DATABASE_URL` trong `.env`, rồi chạy:
+
+```sh
+npm ci
+npm run build
+npm run start:prod
+```
+
+Để dùng chức năng **Tạo backup** trong dashboard, máy cần có PostgreSQL client tương thích (`pg_dump`) và quyền truy cập đúng database. Mục backup dùng `DATABASE_URL`, không cần Docker socket.
+
+### Chạy toàn bộ bằng Docker
+
+Cài Docker Desktop/Engine có Compose. Tạo `.env`, đặt `POSTGRES_PASSWORD` thành chuỗi hexadecimal ngẫu nhiên, rồi chạy:
+
+```sh
+cp .env.example .env
+docker compose up --build -d
+docker compose logs -f app
+```
+
+Ví dụ sinh mật khẩu trên macOS/Linux: `openssl rand -hex 32`; trên Windows có thể tạo chuỗi hexadecimal ngẫu nhiên bằng password manager. Không dùng mật khẩu mẫu khi triển khai trên máy có người dùng khác. Dashboard mặc định chỉ publish ở `127.0.0.1:3890`; PostgreSQL ở `127.0.0.1:55439`. Không xóa volume `hub_data`, `hub_backups` hoặc `hub_postgres` nếu cần giữ session, secrets, backup và lịch sử chat.
+
+Mã đăng nhập dashboard được tạo riêng ở lần chạy đầu. Native: xem `data/admin-token`. Docker: chạy `docker compose exec app cat /app/data/admin-token`. Mỗi máy tự tạo encryption key và session Zalo; không sao chép `.env`, `data/` hay volume từ máy khác trừ khi đang làm quy trình phục hồi có chủ đích.
+
+### Kết nối Hermes/OpenClaw
+
+Khi app chạy native cùng máy với Agent, dùng endpoint local như `http://127.0.0.1:8642/v1` cho Hermes và `http://127.0.0.1:18789/v1` cho OpenClaw. Khi app chạy trong Docker, `127.0.0.1` là chính container Hub; nhập một endpoint mà container có thể truy cập, hoặc đặt Agent và Hub cùng Docker network. Không mở Agent API ra Internet để giải quyết kết nối. Chính sách chặn lệnh Hermes hiện cần kiểm tra process/listener trên cùng máy; với Agent ở container/máy khác, không bật chính sách đó nếu Dashboard báo guard chưa sẵn sàng. Chọn native khi cần tích hợp guard với Hermes cài trực tiếp trên máy.
+
+Các script tự cài Hermes/OpenClaw và LaunchAgent được thiết kế cho môi trường cài Agent riêng; không cần chạy chúng để khởi động Hub. Hướng dẫn cài Agent: [OpenClaw](docs/OPENCLAW.md), [Hermes](phần API agent bên dưới).
+
+Hướng dẫn vận hành và backup: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 Trong **Kết nối**:
 
@@ -124,7 +162,7 @@ Bấm **Main & BCP → Tạo backup**, hoặc:
 npm run db:backup
 ```
 
-Script dùng `pg_dump` trong dịch vụ Compose `db`, tạo dump định dạng custom vào `backups/` với quyền riêng. **Chỉ hỗ trợ database Compose cục bộ hiện tại**, không tự sao lưu DATABASE_URL bên ngoài. Backup chưa tự lên lịch và chưa sao chép ra máy khác.
+Script dùng `pg_dump` theo `DATABASE_URL`, tạo dump định dạng custom vào `backups/` với quyền riêng. Cần PostgreSQL client tương thích trên máy chạy Hub; Docker image có sẵn client. Backup chưa tự lên lịch và chưa sao chép ra máy khác. Hướng dẫn cài/restore: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 Để phục hồi đầy đủ cần:
 

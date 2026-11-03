@@ -1,3 +1,4 @@
+import "dotenv/config";
 import {
   GroupBrainWorker,
   groupBrainView,
@@ -8,7 +9,6 @@ import {
   reclassifyGroupRecord,
   rebuildGroup,
 } from "./group-brain.js";
-import "dotenv/config";
 import { setReplyMode, replaceZaloPolicy } from "./reply-policy.js";
 
 import multipart from "@fastify/multipart";
@@ -1009,18 +1009,6 @@ app.get("/api/backups", async () => {
   }
 });
 app.post("/api/backups", async (req, reply) => {
-  const dbUrl = new URL(
-    process.env.DATABASE_URL ||
-      "postgres://hub:hub_local_dev@127.0.0.1:55439/zalo_hub",
-  );
-  if (
-    !["127.0.0.1", "localhost"].includes(dbUrl.hostname) ||
-    dbUrl.port !== "55439" ||
-    dbUrl.pathname !== "/zalo_hub"
-  )
-    return reply
-      .code(400)
-      .send({ error: "Nút backup hiện chỉ hỗ trợ database Compose cục bộ." });
   if (backingUp) return reply.code(409).send({ error: "Đang sao lưu" });
   backingUp = true;
   try {
@@ -1032,7 +1020,8 @@ app.post("/api/backups", async (req, reply) => {
     return { ok: true };
   } catch {
     return reply.code(500).send({
-      error: "Không sao lưu được. Kiểm tra Docker Compose và database cục bộ.",
+      error:
+        "Không sao lưu được. Kiểm tra pg_dump, DATABASE_URL và quyền truy cập database.",
     });
   } finally {
     backingUp = false;

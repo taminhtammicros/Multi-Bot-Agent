@@ -1,4 +1,33 @@
 services:
+  app:
+    build:
+      context: .
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3890
+      DATABASE_URL: postgres://hub:${POSTGRES_PASSWORD:-hub_local_dev}@db:5432/zalo_hub
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      ALLOWED_HOST: ${ALLOWED_HOST:-}
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3890}:3890"
+    volumes:
+      - hub_data:/app/data
+      - hub_backups:/app/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3890/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 25s
+      retries: 3
   db:
     image: postgres:17-alpine
     environment:
@@ -6,7 +35,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hub_local_dev}
       POSTGRES_DB: zalo_hub
     ports:
-      - "127.0.0.1:55439:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-55439}:5432"
     volumes:
       - hub_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -16,4 +45,6 @@ services:
       retries: 10
     restart: unless-stopped
 volumes:
+  hub_data:
+  hub_backups:
   hub_postgres:

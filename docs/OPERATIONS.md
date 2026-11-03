@@ -22,7 +22,9 @@ Chạy lại `npm start` trong thư mục dự án. Khóa database ngăn hai b�
 
 Chưa cài launchd/systemd vào máy của anh. Để chạy lâu dài, triển khai service restart theo hệ điều hành sau khi nghiệm thu kết nối thật.
 
-## Thử phục hồi backup vào database mới
+## Backup và thử phục hồi vào database mới
+
+Nút backup và `npm run db:backup` dùng `pg_dump` theo `DATABASE_URL`. Docker image có PostgreSQL 17 client; khi chạy native cần cài `pg_dump` cùng major version với server. Backup thủ công, chưa tự lên lịch hoặc sao chép ra máy khác. Hướng dẫn hai cách cài: [INSTALLATION.md](INSTALLATION.md).
 
 Không restore đè database đang chạy. Ví dụ tạo database kiểm thử mới:
 
