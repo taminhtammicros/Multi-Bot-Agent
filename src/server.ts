@@ -51,7 +51,6 @@ import {
 import { ZaloBridge } from "./zalo.js";
 import { TelegramBridge } from "./telegram.js";
 import { claimZaloSetupNotification, getZaloPolicy } from "./zalo-policy.js";
-import { groupModelCatalog } from "./group-model.js";
 import {
   listContacts,
   setContactAccess,
@@ -317,11 +316,26 @@ app.get("/api/chat-profile/:kind/:uid", async (req) => {
     profile: await getChatProfile(s.accountId, s.kind, s.uid),
     sources: await sourceList(s.accountId, s.kind, s.uid),
     guard: await guardStatus(),
+    agents: (
+      await query("SELECT id,enabled,health FROM agents ORDER BY id")
+    ).rows,
   };
 });
 app.put("/api/chat-profile/:kind/:uid", async (req) => {
   const s = profileScope(req);
   const p = profileSchema.parse((req.body as any).profile);
+  if (p.brain !== "auto") {
+    const selected = (
+      await query("SELECT enabled,health FROM agents WHERE id=$1", [p.brain])
+    ).rows[0];
+    if (!selected?.enabled || selected.health !== "online")
+      throw Object.assign(
+        new Error(
+          `Agent ${p.brain} chưa kết nối/online. Kết nối Agent trước khi lưu cấu hình.`,
+        ),
+        { statusCode: 409 },
+      );
+  }
   if (p.brain === "hermes" && p.model && !p.provider)
     throw Object.assign(
       new Error("Cần provider khi chọn model riêng cho Hermes"),
@@ -487,7 +501,11 @@ app.get("/api/agents/:id/catalog", async (req) => {
     .object({ id: z.enum(["hermes", "openclaw"]) })
     .parse(req.params);
   const a = (await query("SELECT * FROM agents WHERE id=$1", [id])).rows[0];
-  if (!a?.enabled) return { models: [] };
+  if (!a?.enabled || a.health !== "online")
+    return {
+      models: [],
+      error: `Agent ${id} chưa kết nối/online. Kết nối Agent trước khi tải model.`,
+    };
   const base =
     id === "hermes"
       ? a.base_url.replace(/\/v1$/, "") + "/api/model/options"
@@ -535,11 +553,24 @@ app.get("/api/agents/:id/catalog", async (req) => {
       });
     return { models: models.slice(0, 1000) };
   }
-  if (id === "openclaw")
-    return {
-      models: [],
-      note: "Nhập ID provider/model. OpenClaw models chỉ liệt kê agent targets.",
-    };
+  if (id === "openclaw") {
+    const models = Array.isArray(payload.data)
+      ? payload.data
+          .map((item: any) => String(item?.id || "").trim())
+          .filter((modelId: string) => modelId && modelId.length <= 200)
+          .slice(0, 1000)
+          .map((modelId: string) => ({
+            id: modelId,
+            label: modelId,
+            provider: modelId.includes("/")
+              ? modelId.slice(0, modelId.indexOf("/"))
+              : "",
+          }))
+      : [];
+    if (a.model && !models.some((model: any) => model.id === a.model))
+      models.unshift({ id: a.model, label: a.model + " · hiện tại", provider: "" });
+    return { models: models.slice(0, 1000) };
+  }
 
   function walk(value: any, provider = "") {
     if (!value || typeof value !== "object") return;
@@ -585,7 +616,6 @@ app.get("/api/agents/:id/catalog", async (req) => {
     ].slice(0, 600),
   };
 });
-app.get("/api/group-model/catalog", async () => groupModelCatalog());
 app.get("/api/zalo", async () => {
   const state = bridge.state();
   return {

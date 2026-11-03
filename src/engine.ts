@@ -398,19 +398,28 @@ export class Engine {
         chatKind,
         task.thread_id || task.conversation_id,
       );
-      const preferred =
-        chatProfile.brain === "auto" ? leadership.agent : chatProfile.brain;
-      const preferredAgent = (
-        await query("SELECT enabled,health FROM agents WHERE id=$1", [
-          preferred,
-        ])
-      ).rows[0];
+      const usesMain = chatProfile.brain === "auto";
+      const preferred = usesMain ? leadership.agent : chatProfile.brain;
+      const preferredAgent = preferred
+        ? (
+            await query("SELECT enabled,health FROM agents WHERE id=$1", [
+              preferred,
+            ])
+          ).rows[0]
+        : null;
       const selectedAgent =
-        task.source === "zalo" && chatKind === "group"
-          ? "group-model"
-          : preferredAgent?.enabled && preferredAgent.health === "online"
-            ? preferred
-            : leadership.agent;
+        preferredAgent?.enabled && preferredAgent.health === "online"
+          ? preferred
+          : null;
+      if (!selectedAgent) {
+        await finishWithoutAgent(
+          task,
+          usesMain
+            ? "Chưa trả lời: hiện không có Agent Main/Backup nào đang online. Kết nối Hermes hoặc OpenClaw rồi gửi lại câu hỏi."
+            : `Chưa trả lời: Agent ${preferred} đang offline hoặc chưa kết nối. Đã giữ nguyên lựa chọn; kết nối Agent này hoặc chọn Theo Main & Backup trong cấu hình hội thoại.`,
+        );
+        return;
+      }
       await query(
         "UPDATE tasks SET status='running',agent=$2,generation=$3,updated_at=now() WHERE id=$1",
         [task.id, selectedAgent, leadership.generation],
@@ -795,7 +804,7 @@ export class Engine {
         }
         const current = (await query("SELECT * FROM leadership WHERE id=1"))
           .rows[0];
-        if (current.generation !== leadership.generation) {
+        if (usesMain && current.generation !== leadership.generation) {
           await query(
             "UPDATE tasks SET status='review',result=$2,error='Main đã thay đổi trong lúc chạy; kết quả cần kiểm tra.',updated_at=now() WHERE id=$1",
             [task.id, answer.text],
@@ -818,7 +827,7 @@ export class Engine {
             )
           ).rows[0];
           if (
-            selectedAgent !== "group-model" &&
+            usesMain &&
             authority.generation !== leadership.generation
           ) {
             await client.query(

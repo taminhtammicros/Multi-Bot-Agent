@@ -376,16 +376,26 @@ async function showChatSettings(target) {
   if (!modal.open) modal.showModal();
   if (target.kind === "group") await renderGroupBrain(base, query, target);
   const form = modal.querySelector("#chat-profile-form");
+  for (const option of form.elements.brain.options) {
+    if (option.value === "auto") continue;
+    const agent = (state.agents || []).find((item) => item.id === option.value);
+    const online = Boolean(agent?.enabled && agent.health === "online");
+    option.disabled = !online;
+    option.textContent =
+      (option.value === "hermes" ? "Hermes" : "OpenClaw") +
+      (online
+        ? " · Đã kết nối"
+        : agent?.enabled && agent.health === "checking"
+          ? " · Đang kiểm tra"
+          : " · Chưa kết nối");
+  }
   if (target.kind === "group") {
     const connection = modal.querySelector(
       '[data-profile-section="connection"]',
     );
-    form.elements.brain.closest("label").hidden = true;
-    form.elements.brain.closest("label").nextElementSibling.hidden = true;
-    form.elements.provider.closest("label").hidden = true;
     connection.insertAdjacentHTML(
       "afterbegin",
-      '<p class="note">Nhóm dùng endpoint model stateless riêng, không chuyển nội dung sang phiên Hermes/OpenClaw. Chọn model từ endpoint nhóm đã cấu hình; để trống sẽ dùng model mặc định của endpoint.</p>',
+      '<p class="note">Agent đã chọn sẽ trực tiếp xử lý câu hỏi nhóm. “Theo Main & Backup” đi theo Agent chính và tự chuyển sang dự phòng khi Main offline. Chọn Hermes/OpenClaw riêng thì bot chỉ gửi tới Agent đó; nếu Agent offline, bot báo lỗi và không tự đổi sang Agent khác.</p>',
     );
     for (const title of [
       "OpenClaw hỗ trợ Hermes",
@@ -439,55 +449,54 @@ async function showChatSettings(target) {
     (modal.querySelector("#personality-count").textContent =
       e.target.value.length);
   const modelFields = modal.querySelector("#profile-model-fields");
+  const providerLabel = form.elements.provider.closest("label");
   const syncBrain = () => {
-    modelFields.hidden =
-      target.kind !== "group" && form.elements.brain.value === "auto";
+    modelFields.hidden = form.elements.brain.value === "auto";
+    providerLabel.hidden = form.elements.brain.value === "openclaw";
   };
   syncBrain();
-  form.elements.brain.onchange = () => {
-    form.elements.model.value = "";
-    form.elements.provider.value = "";
-    syncBrain();
-  };
   let modelOptions = [];
-  modal.querySelector("#profile-load-models").onclick = async (e) => {
-    e.target.disabled = true;
+  const loadAgentModels = async (button) => {
+    if (form.elements.brain.value === "auto") return;
+    button.disabled = true;
     const label = modal.querySelector("#profile-model-state");
-    label.textContent = "Đang tải…";
+    label.textContent = "Đang tải model từ " + form.elements.brain.value + "…";
     try {
       const result = await api(
-        target.kind === "group"
-          ? "/group-model/catalog"
-          : "/agents/" +
-              (form.elements.brain.value === "openclaw"
-                ? "openclaw"
-                : "hermes") +
-              "/catalog",
+        "/agents/" + form.elements.brain.value + "/catalog",
       );
-      modelOptions = result.models;
+      modelOptions = result.models || [];
       modal.querySelector("#profile-model-picker").innerHTML =
         '<option value="">Chọn model</option>' +
         modelOptions
           .map((m, i) => `<option value="${i}">${escape(m.label)}</option>`)
           .join("");
       label.textContent =
-        result.note ||
         result.error ||
-        (target.kind === "group"
-          ? `${modelOptions.length} model từ endpoint stateless của nhóm.`
-          : `${modelOptions.length} model; provider cần có thông tin xác thực trên agent.`);
+        result.note ||
+        `${modelOptions.length} model đã tải từ ${form.elements.brain.value}.`;
     } catch (err) {
       label.textContent = err.message;
     } finally {
-      e.target.disabled = false;
+      button.disabled = false;
     }
   };
+  form.elements.brain.onchange = async () => {
+    form.elements.model.value = "";
+    form.elements.provider.value = "";
+    syncBrain();
+    if (form.elements.brain.value !== "auto")
+      await loadAgentModels(modal.querySelector("#profile-load-models"));
+  };
+  modal.querySelector("#profile-load-models").onclick = (e) =>
+    loadAgentModels(e.currentTarget);
+  if (form.elements.brain.value !== "auto")
+    void loadAgentModels(modal.querySelector("#profile-load-models"));
   modal.querySelector("#profile-model-picker").onchange = (e) => {
     const m = modelOptions[Number(e.target.value)];
     if (e.target.value !== "" && m) {
       form.elements.model.value = m.id;
-      if (target.kind !== "group")
-        form.elements.provider.value = m.provider || "";
+      form.elements.provider.value = m.provider || "";
     }
   };
   form.onsubmit = async (e) => {
