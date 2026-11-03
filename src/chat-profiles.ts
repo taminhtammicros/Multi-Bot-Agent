@@ -3,7 +3,7 @@ import { query } from "./db.js";
 export const profileSchema = z.object({
   groupMemoryEnabled: z.boolean().default(true),
   groupSummaryMinutes: z.number().int().min(5).max(1440).default(15),
-  personality: z.string().max(2000).default(""),
+  personality: z.string().max(4000).default(""),
   brain: z.enum(["auto", "hermes", "openclaw"]).default("auto"),
   model: z.string().trim().max(200).default(""),
   provider: z.string().trim().max(80).default(""),
