@@ -8,7 +8,7 @@
     "start": "tsx src/server.ts",
     "check": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "test:integration": "tsx --test tests/*.integration.ts",
+    "test:integration": "tsx --test tests/engine.integration.ts",
     "db:up": "docker compose up -d db",
     "db:backup": "node scripts/backup.mjs",
     "test:browser": "node scripts/browser-check.mjs",
@@ -25,7 +25,12 @@
     "openclaw:connect": "node scripts/connect-openclaw.mjs",
     "openclaw:worker": "node scripts/configure-openclaw-worker.mjs",
     "test:delegation-browser": "node scripts/delegation-browser-check.mjs",
-    "hermes:summary:setup": "tsx scripts/install-hermes-summary.mjs"
+    "hermes:summary:setup": "tsx scripts/install-hermes-summary.mjs",
+    "brain:setup": "tsx scripts/register-group-brain.mjs",
+    "test:brain": "tsx --test tests/group-brain.test.ts",
+    "test:brain:integration": "tsx --test tests/group-brain.integration.ts",
+    "brain:import": "tsx scripts/import-group-history.mjs",
+    "test:brain:browser": "node scripts/group-brain-browser-check.mjs"
   },
   "engines": {
     "node": ">=22"

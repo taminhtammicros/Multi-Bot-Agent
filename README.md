@@ -180,3 +180,7 @@ TypeScript có mapping kiểu trực tiếp đến `zca-js/dist/index.d.ts` vì 
 ## Phần chưa hoàn thành để đạt BCP production
 
 Database HA, máy dịch vụ dự phòng, fencing nhiều máy, nhật ký tin nhận khi database lỗi, backup ngoài máy/PITR, cảnh báo ngoài dashboard và diễn tập RTO/RPO chưa được triển khai. Chưa diễn tập end-to-end với hai agent thật. Media, phân quyền nhiều quản trị viên, tóm tắt tự động và các lệnh quản trị trong Zalo là giai đoạn tiếp theo. Hội thoại có giới hạn lệnh hiện chỉ được chạy trên Hermes local có guard; chưa thể chuyển các lượt đó sang OpenClaw.
+
+### Trí nhớ riêng theo nhóm
+
+Nhóm Zalo dùng kho `group_*` có RLS và model suy luận trực tiếp, không dùng session/bộ nhớ/công cụ agent chung. Bot có thể ghi nhận tin không tag trong nhóm được cho phép, lọc nhiễu, phân topic và tổng hợp định kỳ; quản trị xem/sửa tại **Cấu hình riêng → Trí nhớ & Topic**. DM giữ luồng Hermes/OpenClaw hiện tại. Chạy `npm run brain:setup` để cấu hình model từ custom provider đang có và `npm run brain:import` để nhập lịch sử xác định được nguồn. Xem [hướng dẫn và ranh giới bảo mật](docs/GROUP-BRAIN.md), [tiến độ triển khai](docs/GROUP-BRAIN-TODO.md).

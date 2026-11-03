@@ -1,5 +1,6 @@
 import { setReplyMode } from "./reply-policy.js";
-import { pool, query, setting } from "./db.js";
+import { pool, query } from "./db.js";
+import { getZaloPolicy, saveZaloPolicyPatch } from "./zalo-policy.js";
 export async function observeContact(
   accountId: string,
   uid: string,
@@ -18,7 +19,7 @@ export async function observeContact(
   );
 }
 export async function listContacts(accountId: string | null) {
-  const policy = await setting("zalo");
+  const policy = await getZaloPolicy(accountId);
   const rows = accountId
     ? (
         await query(
@@ -75,6 +76,8 @@ export async function listContacts(accountId: string | null) {
     accountId,
     contacts: combined,
     groupsEnabled: groupData.groupsEnabled,
+    policyConfigured: groupData.policyConfigured,
+    legacyPolicyAvailable: groupData.legacyPolicyAvailable,
   };
 }
 export async function setContactAccess(
@@ -108,7 +111,7 @@ export async function observeGroup(
   );
 }
 export async function listGroupContacts(accountId: string | null) {
-  const policy = await setting("zalo");
+  const policy = await getZaloPolicy(accountId);
   const rows = accountId
     ? (
         await query(
@@ -142,21 +145,28 @@ export async function listGroupContacts(accountId: string | null) {
         member_count: null,
         first_seen: null,
       });
-  return { groupsEnabled: policy.groupsEnabled, groups: [...groups.values()] };
+  return {
+    groupsEnabled: policy.groupsEnabled,
+    policyConfigured: policy.policyConfigured,
+    legacyPolicyAvailable: policy.legacyPolicyAvailable,
+    groups: [...groups.values()],
+  };
 }
 export async function setGroupAccess(
   accountId: string,
   uid: string,
   allowed: boolean,
 ) {
-  return setReplyMode(accountId, "group", uid, allowed ? "all" : "silent");
+  return setReplyMode(
+    accountId,
+    "group",
+    uid,
+    allowed ? "mention" : "silent",
+  );
 }
 
 export async function setGroupsEnabled(accountId: string, enabled: boolean) {
-  await query(
-    "UPDATE settings SET value=jsonb_set(value,'{groupsEnabled}',$1::jsonb) WHERE key='zalo'",
-    [JSON.stringify(enabled)],
-  );
+  await saveZaloPolicyPatch(accountId, { groupsEnabled: enabled });
   await query("INSERT INTO events(kind,message) VALUES($1,$2)", [
     "zalo_access",
     `${enabled ? "Bật" : "Tắt"} phản hồi nhóm cho bot ${accountId}`,

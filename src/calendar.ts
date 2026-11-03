@@ -1,6 +1,8 @@
+import { groupScope } from "./group-brain.js";
 import { randomUUID } from "node:crypto";
 import { enqueue } from "./engine.js";
-import { event, pool, query, setting } from "./db.js";
+import { event, pool, query } from "./db.js";
+import { getZaloPolicy } from "./zalo-policy.js";
 
 export type CalendarInput = {
   title: string;
@@ -23,7 +25,7 @@ async function permitted(
   threadId: string,
   threadType: 0 | 1,
 ) {
-  const policy = await setting<any>("zalo");
+  const policy = await getZaloPolicy(accountId);
   if (threadType === 1)
     return Boolean(
       policy?.groupsEnabled && policy.allowGroups?.includes(threadId),
@@ -33,7 +35,7 @@ async function permitted(
 
 export async function calendarTargets(accountId: string | null) {
   if (!accountId) return { targets: [], groupsEnabled: false };
-  const policy = await setting<any>("zalo");
+  const policy = await getZaloPolicy(accountId);
   const [users, groups] = await Promise.all([
     query(
       "SELECT uid,display_name FROM zalo_contacts WHERE account_id=$1 ORDER BY display_name,uid",
@@ -94,7 +96,10 @@ export async function saveCalendar(
       new Error("Hội thoại chưa được cấp quyền trong trang Zalo & Telegram."),
       { statusCode: 403 },
     );
-  const conversationId = `zalo:${input.threadType}:${input.threadId}`;
+  const conversationId =
+    input.threadType === 1
+      ? groupScope({ accountId, groupId: input.threadId })
+      : `zalo:${input.threadType}:${input.threadId}`;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

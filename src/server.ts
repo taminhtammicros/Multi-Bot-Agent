@@ -1,3 +1,13 @@
+import {
+  GroupBrainWorker,
+  groupBrainView,
+  requestGroupSummary,
+  editGroupFact,
+  editGroupTopic,
+  reorganizeGroupTopic,
+  reclassifyGroupRecord,
+  rebuildGroup,
+} from "./group-brain.js";
 import "dotenv/config";
 import { setReplyMode, replaceZaloPolicy } from "./reply-policy.js";
 
@@ -40,6 +50,7 @@ import {
 } from "./calendar.js";
 import { ZaloBridge } from "./zalo.js";
 import { TelegramBridge } from "./telegram.js";
+import { claimZaloSetupNotification, getZaloPolicy } from "./zalo-policy.js";
 import {
   listContacts,
   setContactAccess,
@@ -315,7 +326,11 @@ app.put("/api/chat-profile/:kind/:uid", async (req) => {
       new Error("Cần provider khi chọn model riêng cho Hermes"),
       { statusCode: 400 },
     );
-  if (needsGuard(p) && (!(await guardStatus()).ready || p.brain === "openclaw"))
+  if (
+    s.kind !== "group" &&
+    needsGuard(p) &&
+    (!(await guardStatus()).ready || p.brain === "openclaw")
+  )
     throw Object.assign(
       new Error(
         "Chính sách lệnh hạn chế cần guard Hermes đang hoạt động. OpenClaw chưa hỗ trợ guard này.",
@@ -326,6 +341,83 @@ app.put("/api/chat-profile/:kind/:uid", async (req) => {
   await event("chat_profile", `Đã cập nhật cấu hình ${s.kind} ${s.uid}`);
   return { ok: true, profile };
 });
+const brainScope = (req: any) => {
+  const s = profileScope(req);
+  if (s.kind !== "group")
+    throw Object.assign(new Error("Bộ nhớ này chỉ dành cho nhóm."), {
+      statusCode: 400,
+    });
+  return { accountId: s.accountId, groupId: s.uid };
+};
+app.get("/api/chat-profile/:kind/:uid/brain", async (req) =>
+  groupBrainView(brainScope(req)),
+);
+app.post("/api/chat-profile/:kind/:uid/brain/summarize", async (req) =>
+  requestGroupSummary(brainScope(req)),
+);
+app.put("/api/chat-profile/:kind/:uid/brain/facts/:id", async (req) => {
+  const s = brainScope(req);
+  const id = z
+    .string()
+    .uuid()
+    .parse((req.params as any).id);
+  const body = z
+    .object({
+      status: z.enum(["confirmed", "rejected", "disputed"]),
+      replacement: z.string().uuid().optional(),
+    })
+    .parse(req.body);
+  return editGroupFact(s, id, body.status, body.replacement);
+});
+app.put("/api/chat-profile/:kind/:uid/brain/topics/:id", async (req) => {
+  const s = brainScope(req);
+  const id = z
+    .string()
+    .uuid()
+    .parse((req.params as any).id);
+  const body = z
+    .object({
+      title: z.string().trim().min(1).max(200),
+      status: z.enum(["active", "closed"]),
+    })
+    .parse(req.body);
+  return editGroupTopic(s, id, body.title, body.status);
+});
+app.post("/api/chat-profile/:kind/:uid/brain/topics/:id/merge", async (req) => {
+  const s = brainScope(req);
+  const id = z
+    .string()
+    .uuid()
+    .parse((req.params as any).id);
+  const body = z.object({ targetId: z.string().uuid() }).parse(req.body);
+  return reorganizeGroupTopic(s, id, body);
+});
+app.post("/api/chat-profile/:kind/:uid/brain/topics/:id/split", async (req) => {
+  const s = brainScope(req);
+  const id = z
+    .string()
+    .uuid()
+    .parse((req.params as any).id);
+  const body = z
+    .object({
+      title: z.string().trim().min(1).max(200),
+      recordIds: z.array(z.string().uuid()).min(1).max(100),
+    })
+    .parse(req.body);
+  return reorganizeGroupTopic(s, id, body);
+});
+app.put("/api/chat-profile/:kind/:uid/brain/records/:id", async (req) => {
+  const s = brainScope(req);
+  const id = z
+    .string()
+    .uuid()
+    .parse((req.params as any).id);
+  const body = z.object({ noise: z.boolean() }).parse(req.body);
+  return reclassifyGroupRecord(s, id, body.noise);
+});
+app.post("/api/chat-profile/:kind/:uid/brain/rebuild", async (req) =>
+  rebuildGroup(brainScope(req)),
+);
 app.get("/api/library/browse", async (req) =>
   browseLibrary(
     z.object({ path: z.string().max(2000).optional() }).parse(req.query).path,
@@ -492,10 +584,21 @@ app.get("/api/agents/:id/catalog", async (req) => {
     ].slice(0, 600),
   };
 });
-app.get("/api/zalo", async () => ({
-  ...bridge.state(),
-  policy: await setting("zalo"),
-}));
+app.get("/api/zalo", async () => {
+  const state = bridge.state();
+  return {
+    ...state,
+    policy: await getZaloPolicy(state.accountId || null),
+  };
+});
+app.get("/api/zalo/policy/legacy", async () => {
+  const legacy = (await setting<any>("zalo")) || {};
+  return {
+    allowUsers: Array.isArray(legacy.allowUsers) ? legacy.allowUsers : [],
+    allowGroups: Array.isArray(legacy.allowGroups) ? legacy.allowGroups : [],
+    groupsEnabled: Boolean(legacy.groupsEnabled),
+  };
+});
 app.get("/api/telegram", async () => telegram.state());
 app.put("/api/telegram", async (req) => {
   const { token: botToken } = z
@@ -507,7 +610,7 @@ app.delete("/api/telegram", async () => telegram.disconnect());
 app.post("/api/telegram/link", async () => telegram.createLink());
 app.post("/api/telegram/test", async () => telegram.test());
 app.get("/api/zalo/contacts", async () =>
-  listContacts(bridge.state().accountId),
+  listContacts(bridge.state().accountId || null),
 );
 app.put("/api/zalo/contacts/:uid/access", async (req) => {
   const { uid } = z
@@ -594,7 +697,12 @@ app.put("/api/zalo/policy", async (req) => {
       groupsEnabled: z.boolean(),
     })
     .parse(req.body);
-  await replaceZaloPolicy(bridge.state().accountId, data);
+  const accountId = bridge.state().accountId;
+  if (!accountId)
+    throw Object.assign(new Error("Kết nối tài khoản Zalo trước."), {
+      statusCode: 409,
+    });
+  await replaceZaloPolicy(accountId, data);
   await event("config", "Cập nhật quyền truy cập Zalo");
   return { ok: true };
 });
@@ -911,6 +1019,7 @@ let checking = false,
 let healthPrimed = false;
 let observedZalo = false;
 let previousZaloConnected = false;
+let observedZaloAccountId: string | null = null;
 const previousAgentHealth = new Map<string, string>();
 const healthTimer = setInterval(async () => {
   if (checking) return;
@@ -940,6 +1049,19 @@ const healthTimer = setInterval(async () => {
     healthPrimed = true;
     if (!engine.busy) await reconcile();
     const zaloConnected = bridge.state().status === "connected";
+    const zaloAccountId = bridge.state().accountId || null;
+    if (zaloConnected && zaloAccountId && zaloAccountId !== observedZaloAccountId) {
+      const policy = await getZaloPolicy(zaloAccountId);
+      if (
+        !policy.policyConfigured &&
+        (await claimZaloSetupNotification(zaloAccountId))
+      ) {
+        const message = `⚠️ Tài khoản Zalo ${zaloAccountId} vừa kết nối nhưng chưa rà soát quyền DM/nhóm. Bot đang chặn tin mới cho đến khi cấu hình trong Dashboard → Zalo & Telegram → Quyền trò chuyện. Danh sách quyền cũ không tự áp dụng cho tài khoản này.`;
+        await event("zalo_setup_required", message);
+        void telegram.notify(message);
+      }
+      observedZaloAccountId = zaloAccountId;
+    }
     if (observedZalo && zaloConnected !== previousZaloConnected)
       void telegram.notify(
         zaloConnected
@@ -955,6 +1077,14 @@ const healthTimer = setInterval(async () => {
     checking = false;
   }
 }, 10000);
+const groupBrainWorker = new GroupBrainWorker();
+const brainTimer = setInterval(() => {
+  void groupBrainWorker
+    .tick(bridge.state().accountId || undefined)
+    .catch(() => {
+      dbError = true;
+    });
+}, 15000);
 const workTimer = setInterval(async () => {
   try {
     await tickCalendar();
@@ -990,6 +1120,7 @@ console.log(
 );
 async function shutdown() {
   clearInterval(healthTimer);
+  clearInterval(brainTimer);
   clearInterval(workTimer);
   clearInterval(sendTimer);
   bridge.shutdown();

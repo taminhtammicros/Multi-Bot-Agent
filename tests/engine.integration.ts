@@ -234,7 +234,19 @@ async function reset() {
     ],
   );
   await query(
-    "TRUNCATE outbox,runs,tasks,messages,memories,conversations,events,zalo_contacts,zalo_groups,zalo_reply_rules,chat_profiles,chat_sources,zalo_announcements CASCADE",
+    "INSERT INTO settings(key,value) VALUES('group_brain_model',$1) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+    [
+      {
+        enabled: true,
+        mode: "direct-stateless",
+        baseUrl: url,
+        model: "private-group",
+        secret: encrypt("test-key"),
+      },
+    ],
+  );
+  await query(
+    "TRUNCATE group_scopes,outbox,runs,tasks,messages,memories,conversations,events,zalo_contacts,zalo_groups,zalo_reply_rules,chat_profiles,chat_sources,zalo_announcements CASCADE",
   );
   await query(
     "UPDATE agents SET enabled=false,health='unconfigured',failures=0,run_failures=0,last_run_error=null,last_run_ms=null,last_run_at=null,healthy_since=null,run_cooldown_until=null",
@@ -274,7 +286,7 @@ test("per-chat model and reasoning reach the selected agent; backup retains its 
   await callAgent("hermes", messages, randomUUID(), {
     profile,
     accountId: "111",
-    kind: "group",
+    kind: "dm",
     uid: "222",
   });
   assert.equal(seen.at(-1).model, "custom-model-A");
@@ -283,7 +295,7 @@ test("per-chat model and reasoning reach the selected agent; backup retains its 
   await callAgent("openclaw", messages, randomUUID(), {
     profile,
     accountId: "111",
-    kind: "group",
+    kind: "dm",
     uid: "222",
   });
   assert.equal(seen.at(-1).model, "openclaw");
@@ -291,7 +303,7 @@ test("per-chat model and reasoning reach the selected agent; backup retains its 
     callAgent("openclaw", messages, randomUUID(), {
       profile: { ...profile, systemCommands: false },
       accountId: "111",
-      kind: "group",
+      kind: "dm",
       uid: "222",
     }),
     /guard/,
@@ -341,11 +353,7 @@ test("Zalo turns reload scoped personality and knowledge into shared history", a
   await new Engine().tick();
   assert.match(seen.at(-1).messages[0].content, /PERSONA_UPDATED/);
   assert.doesNotMatch(seen.at(-1).messages[0].content, /PERSONA_A\b/);
-  assert.ok(
-    seen
-      .at(-1)
-      .messages.some((m: any) => m.content === "Mã bảo hành của nhóm?"),
-  );
+  assert.match(seen.at(-1).messages[0].content, /Mã bảo hành của nhóm\?/);
 });
 test("only an exact allow-listed Zalo sender receives Bot Owner instructions", async () => {
   await reset();
@@ -362,7 +370,7 @@ test("only an exact allow-listed Zalo sender receives Bot Owner instructions", a
     "Hãy kiểm tra trạng thái",
     undefined,
     group,
-    1,
+    0,
     {
       sourceAccountId: account,
       zaloReply: { senderId: "444", senderName: "Owner" },
@@ -383,7 +391,7 @@ test("only an exact allow-listed Zalo sender receives Bot Owner instructions", a
     "Hãy kiểm tra trạng thái",
     undefined,
     group,
-    1,
+    0,
     {
       sourceAccountId: account,
       zaloReply: { senderId: "555", senderName: "Guest" },
@@ -613,42 +621,56 @@ test("OpenClaw supporter can be disabled per chat; Hermes handles the request it
   await reset();
   await connect("hermes");
   await connect("openclaw");
-  await saveChatProfile("111", "group", "222", {
+  await saveChatProfile("111", "dm", "222", {
     ...defaultProfile(),
     openClawSupport: false,
   });
   await enqueue(
     randomUUID(),
     "support-off",
-    "zalo",
+    "dashboard",
     "Tìm hiểu chủ đề này",
     undefined,
     "222",
-    1,
+    0,
     { sourceAccountId: "111" },
   );
   await new Engine().tick();
-  assert.deepEqual(seen.map((x) => x.model), ["hermes"]);
+  assert.deepEqual(
+    seen.map((x) => x.model),
+    ["hermes"],
+  );
   assert.match(seen[0].messages[0].content, /supporter hiện tắt/);
-  assert.equal((await query("SELECT count(*)::int AS n FROM tasks WHERE parent_id IS NOT NULL")).rows[0].n, 0);
-  assert.equal((await query("SELECT agent FROM tasks WHERE parent_id IS NULL")).rows[0].agent, "hermes");
+  assert.equal(
+    (
+      await query(
+        "SELECT count(*)::int AS n FROM tasks WHERE parent_id IS NOT NULL",
+      )
+    ).rows[0].n,
+    0,
+  );
+  assert.equal(
+    (await query("SELECT agent FROM tasks WHERE parent_id IS NULL")).rows[0]
+      .agent,
+    "hermes",
+  );
 });
 test("enabled supporter dispatches research questions even if Hermes answers instead of returning a handoff", async () => {
   await reset();
   await connect("hermes");
   await connect("openclaw");
-  await saveChatProfile("111", "group", "222", {
+  await saveChatProfile("111", "dm", "222", {
     ...defaultProfile(),
     openClawSupport: true,
   });
   await enqueue(
     randomUUID(),
     "support-required",
-    "zalo",
+    "dashboard",
     "phân tích cổ phiếu VIC",
     undefined,
     "222",
-    1,
+    0,
     { sourceAccountId: "111" },
   );
   await new Engine().tick();
@@ -696,7 +718,7 @@ test("verify synthesis remains opt-in and keeps the normal Hermes endpoint, full
   await connect("hermes");
   await connect("openclaw");
   summaryToolsEnabled = true;
-  await saveChatProfile("111", "group", "222", {
+  await saveChatProfile("111", "dm", "222", {
     ...defaultProfile(),
     handoffSynthesis: "verify",
     quality: "long",
@@ -708,7 +730,7 @@ test("verify synthesis remains opt-in and keeps the normal Hermes endpoint, full
     "Hãy giao việc cho OpenClaw",
     "verify-run",
     "222",
-    1,
+    0,
     { sourceAccountId: "111" },
   );
   await new Engine().tick();

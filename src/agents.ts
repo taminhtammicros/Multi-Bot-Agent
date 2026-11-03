@@ -1,3 +1,4 @@
+import { groupCompletion } from "./group-model.js";
 import type { ChatProfile } from "./chat-profiles.js";
 import type { HandoffPhase } from "./handoff.js";
 import { needsGuard, prepareGuard, guardStatus } from "./command-guard.js";
@@ -115,6 +116,21 @@ export async function callAgent(
     phase?: HandoffPhase;
   },
 ) {
+  if (options?.kind === "group") {
+    if (
+      !/^\d{1,30}$/.test(options.accountId) ||
+      !/^\d{1,30}$/.test(options.uid)
+    )
+      throw new AgentFailure(false, "Thiếu phạm vi nhóm; từ chối gửi model.");
+    try {
+      return await groupCompletion(messages);
+    } catch {
+      throw new AgentFailure(
+        false,
+        "Model riêng của nhóm chưa trả kết quả; không chuyển sang agent chung.",
+      );
+    }
+  }
   let a = (await query("SELECT * FROM agents WHERE id=$1", [id]))
     .rows[0] as Agent;
   let fastSynthesis = false;

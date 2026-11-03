@@ -1,3 +1,4 @@
+import { recordGroupMessage, sourceTime } from "./group-brain.js";
 import { getChatProfile } from "./chat-profiles.js";
 import { captureReplyTarget, formatReply } from "./zalo-replies.js";
 import { splitMentioned, welcomeMessage, stripEmoji } from "./zalo-format.js";
@@ -7,7 +8,8 @@ import { replyMode, permitsReply, isBotMentioned } from "./reply-policy.js";
 import { Zalo, LoginQRCallbackEventType, ThreadType, type API } from "zca-js";
 import { readFile, rm } from "node:fs/promises";
 import { encrypt, decrypt, privateFile } from "./security.js";
-import { pool, query, setting, event } from "./db.js";
+import { pool, query, event } from "./db.js";
+import { getZaloPolicy } from "./zalo-policy.js";
 import { enqueue } from "./engine.js";
 import { ZaloRecovery, type RecoveryOptions } from "./zalo-recovery.js";
 import { observeContact, observeGroup } from "./contacts.js";
@@ -524,12 +526,9 @@ export class ZaloBridge {
         true,
       );
     }
-    if (typeof m.data?.content !== "string") {
-      diag.unsupported++;
-      diag.lastDecision = "unsupported_content";
-      return;
-    }
-    const cfg = await setting("zalo"),
+    const cfg = await getZaloPolicy(
+      this.api ? String(this.api.getOwnId()) : null,
+    ),
       group = m.type === ThreadType.Group;
     const allowed = group
       ? cfg.groupsEnabled && cfg.allowGroups.includes(String(m.threadId))
@@ -551,9 +550,50 @@ export class ZaloBridge {
       String(m.threadId),
       cfg,
     );
-    if (!permitsReply(mode, mentioned)) {
+    const shouldReply = permitsReply(mode, mentioned);
+    if (group && accountId && mode !== "silent") {
+      const profile = await getChatProfile(
+        accountId,
+        "group",
+        String(m.threadId),
+      );
+      if (profile.groupMemoryEnabled || shouldReply) {
+        const text =
+          typeof m.data?.content === "string"
+            ? m.data.content
+            : "[Nội dung đính kèm chưa được đọc; không suy đoán nội dung]";
+        if (!m.data?.msgId) throw new Error("Tin nhóm thiếu ID nguồn.");
+        await recordGroupMessage(
+          { accountId, groupId: String(m.threadId) },
+          {
+            externalId: String(m.data.msgId),
+            senderId: String(m.data.uidFrom),
+            senderName: String(m.data.dName || m.data.uidFrom),
+            content: text,
+            occurredAt: sourceTime(m.data.ts),
+            replyExternalId:
+              typeof m.data.quote?.globalMsgId === "string" ||
+              Number.isSafeInteger(m.data.quote?.globalMsgId)
+                ? String(m.data.quote.globalMsgId)
+                : null,
+            replyExcerpt:
+              typeof m.data.quote?.msg === "string" ? m.data.quote.msg : null,
+            replySenderId: m.data.quote?.ownerId
+              ? String(m.data.quote.ownerId)
+              : null,
+            role: typeof m.data?.content === "string" ? "user" : "unsupported",
+          },
+        );
+      }
+    }
+    if (typeof m.data?.content !== "string") {
+      diag.unsupported++;
+      diag.lastDecision = "unsupported_content";
+      return;
+    }
+    if (!shouldReply) {
       diag.blocked++;
-      diag.lastDecision = mode === "mention" ? "awaiting_tag" : "silent";
+      diag.lastDecision = mode === "mention" ? "listening" : "silent";
       return;
     }
     const groupTitle =
@@ -572,7 +612,9 @@ export class ZaloBridge {
         : String(m.data.dName || m.threadId),
       "zalo",
       m.data.content,
-      `zalo:${m.type}:${m.threadId}:${m.data.msgId}`,
+      group
+        ? `zalo:${accountId}:group:${m.threadId}:${m.data.msgId}`
+        : `zalo:${m.type}:${m.threadId}:${m.data.msgId}`,
       String(m.threadId),
       m.type,
       {
@@ -688,8 +730,8 @@ export class ZaloBridge {
         [row.id],
       );
       if (!claimed.rowCount) continue;
-      const policy = await setting("zalo");
       const accountId = String(api.getOwnId());
+      const policy = await getZaloPolicy(accountId);
       const isAllowed =
         row.account_id === accountId &&
         policy.groupsEnabled &&
@@ -744,7 +786,7 @@ export class ZaloBridge {
         continue;
       }
       if (this.status !== "connected" || !this.api) return;
-      const policy = await setting("zalo");
+      const policy = await getZaloPolicy(String(this.api.getOwnId()));
       const allowed =
         item.thread_type === ThreadType.Group
           ? policy.groupsEnabled &&

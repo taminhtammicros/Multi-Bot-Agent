@@ -1,4 +1,5 @@
-import { pool, query, setting } from "./db.js";
+import { pool, query } from "./db.js";
+import { getZaloPolicy } from "./zalo-policy.js";
 export type ReplyMode = "mention" | "silent" | "all";
 export type ChatKind = "dm" | "group";
 export const modeLabels: Record<ReplyMode, string> = {
@@ -22,7 +23,7 @@ export async function replyMode(
   uid: string,
   policy?: any,
 ): Promise<ReplyMode> {
-  const cfg = policy || (await setting("zalo"));
+  const cfg = policy || (await getZaloPolicy(accountId));
   const allowed =
     kind === "group"
       ? cfg.groupsEnabled && cfg.allowGroups.includes(uid)
@@ -52,11 +53,16 @@ export async function setReplyMode(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await client.query(
+      "INSERT INTO zalo_account_policies(account_id,policy) VALUES($1,$2) ON CONFLICT(account_id) DO NOTHING",
+      [accountId, { allowUsers: [], allowGroups: [], groupsEnabled: false }],
+    );
     const policy = (
       await client.query(
-        "SELECT value FROM settings WHERE key='zalo' FOR UPDATE",
+        "SELECT policy FROM zalo_account_policies WHERE account_id=$1 FOR UPDATE",
+        [accountId],
       )
-    ).rows[0].value;
+    ).rows[0].policy;
     const key = kind === "group" ? "allowGroups" : "allowUsers",
       ids = new Set<string>(policy[key]);
     if (mode === "silent") ids.delete(uid);
@@ -67,9 +73,10 @@ export async function setReplyMode(
         { statusCode: 400 },
       );
     policy[key] = [...ids];
-    await client.query("UPDATE settings SET value=$1 WHERE key='zalo'", [
-      policy,
-    ]);
+    await client.query(
+      "UPDATE zalo_account_policies SET policy=$2,reviewed_at=now(),updated_at=now() WHERE account_id=$1",
+      [accountId, policy],
+    );
     await client.query(
       "INSERT INTO zalo_reply_rules(account_id,kind,uid,mode) VALUES($1,$2,$3,$4) ON CONFLICT(account_id,kind,uid) DO UPDATE SET mode=EXCLUDED.mode,updated_at=now()",
       [accountId, kind, uid, mode],
@@ -105,34 +112,43 @@ export async function setReplyMode(
   }
 }
 /** Legacy bulk allowlist editor preserves modes of unchanged entries. */
-export async function replaceZaloPolicy(accountId: string | null, policy: any) {
+export async function replaceZaloPolicy(accountId: string, policy: any) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await client.query(
+      "INSERT INTO zalo_account_policies(account_id,policy) VALUES($1,$2) ON CONFLICT(account_id) DO NOTHING",
+      [accountId, { allowUsers: [], allowGroups: [], groupsEnabled: false }],
+    );
     const old = (
       await client.query(
-        "SELECT value FROM settings WHERE key='zalo' FOR UPDATE",
+        "SELECT policy FROM zalo_account_policies WHERE account_id=$1 FOR UPDATE",
+        [accountId],
       )
-    ).rows[0].value;
-    if (accountId)
-      for (const [kind, key] of [
-        ["dm", "allowUsers"],
-        ["group", "allowGroups"],
-      ]) {
-        const previous = new Set<string>(old[key]),
-          next = new Set<string>(policy[key]);
-        for (const uid of new Set([...previous, ...next])) {
-          if (previous.has(uid) === next.has(uid)) continue;
-          const mode = next.has(uid) ? "all" : "silent";
-          await client.query(
-            "INSERT INTO zalo_reply_rules(account_id,kind,uid,mode) VALUES($1,$2,$3,$4) ON CONFLICT(account_id,kind,uid) DO UPDATE SET mode=EXCLUDED.mode,updated_at=now()",
-            [accountId, kind, uid, mode],
-          );
-        }
+    ).rows[0].policy;
+    for (const [kind, key] of [
+      ["dm", "allowUsers"],
+      ["group", "allowGroups"],
+    ]) {
+      const previous = new Set<string>(old[key]),
+        next = new Set<string>(policy[key]);
+      for (const uid of new Set([...previous, ...next])) {
+        if (previous.has(uid) === next.has(uid)) continue;
+        const mode = next.has(uid)
+          ? kind === "group"
+            ? "mention"
+            : "all"
+          : "silent";
+        await client.query(
+          "INSERT INTO zalo_reply_rules(account_id,kind,uid,mode) VALUES($1,$2,$3,$4) ON CONFLICT(account_id,kind,uid) DO UPDATE SET mode=EXCLUDED.mode,updated_at=now()",
+          [accountId, kind, uid, mode],
+        );
       }
-    await client.query("UPDATE settings SET value=$1 WHERE key='zalo'", [
-      policy,
-    ]);
+    }
+    await client.query(
+      "UPDATE zalo_account_policies SET policy=$2,reviewed_at=now(),updated_at=now() WHERE account_id=$1",
+      [accountId, policy],
+    );
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK");

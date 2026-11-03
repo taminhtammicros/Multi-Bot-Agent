@@ -265,7 +265,7 @@ function calendarDialog(item, targets, dateKey = "") {
     d.setSeconds(0, 0);
   }
   const targetValue = item ? `${item.thread_type}:${item.thread_id}` : "";
-  modal.innerHTML = `<div class="row spread"><div><div class="eyebrow">LỊCH · ZALO</div><h2>${item ? "Sửa lịch" : "Tạo lịch"}</h2></div><button type="button" data-close>Đóng</button></div><form id="calendar-form"><label>Tên lịch<input name="title" maxlength="120" required value="${escape(item?.title || "")}" placeholder="Ví dụ: Tổng hợp tin buổi sáng"></label><label>Bot cần làm gì?<textarea name="prompt" maxlength="2000" rows="4" required placeholder="Mô tả rõ việc cần làm hoặc nội dung cần nhắc">${escape(item?.prompt || "")}</textarea></label><label>Gửi kết quả vào<select name="target" required><option value="">Chọn DM hoặc nhóm được cấp quyền…</option>${targets.map((t) => `<option value="${t.threadType}:${t.uid}" ${targetValue === `${t.threadType}:${t.uid}` ? "selected" : ""}>${t.threadType === 1 ? "Nhóm" : "DM"} · ${escape(t.name)}</option>`).join("")}</select></label><div class="row calendar-form-row"><label>Ngày giờ (giờ Việt Nam)<input type="datetime-local" name="runAt" required value="${localDateTimeInput(d)}"></label><label>Lặp lại<select name="recurrence"><option value="once" ${item?.recurrence === "once" || !item ? "selected" : ""}>Một lần</option><option value="daily" ${item?.recurrence === "daily" ? "selected" : ""}>Hằng ngày</option><option value="weekly" ${item?.recurrence === "weekly" ? "selected" : ""}>Hằng tuần</option></select></label></div><p class="small muted">Nội dung sẽ được gửi thông qua Hermes/OpenClaw, rồi phản hồi vào hội thoại Zalo đã chọn.</p><div id="calendar-error" class="small red"></div><div class="modal-actions"><button type="button" data-close>Hủy</button>${item ? `<button type="button" id="calendar-toggle">${item.enabled ? "Tạm dừng" : "Bật lại"}</button><button type="button" class="danger" id="calendar-delete">Xóa lịch</button>` : ""}<button class="primary">${item ? "Lưu thay đổi" : "Tạo lịch"}</button></div></form>`;
+  modal.innerHTML = `<div class="row spread"><div><div class="eyebrow">LỊCH · ZALO</div><h2>${item ? "Sửa lịch" : "Tạo lịch"}</h2></div><button type="button" data-close>Đóng</button></div><form id="calendar-form"><label>Tên lịch<input name="title" maxlength="120" required value="${escape(item?.title || "")}" placeholder="Ví dụ: Tổng hợp tin buổi sáng"></label><label>Bot cần làm gì?<textarea name="prompt" maxlength="2000" rows="4" required placeholder="Mô tả rõ việc cần làm hoặc nội dung cần nhắc">${escape(item?.prompt || "")}</textarea></label><label>Gửi kết quả vào<select name="target" required><option value="">Chọn DM hoặc nhóm được cấp quyền…</option>${targets.map((t) => `<option value="${t.threadType}:${t.uid}" ${targetValue === `${t.threadType}:${t.uid}` ? "selected" : ""}>${t.threadType === 1 ? "Nhóm" : "DM"} · ${escape(t.name)}</option>`).join("")}</select></label><div class="row calendar-form-row"><label>Ngày giờ (giờ Việt Nam)<input type="datetime-local" name="runAt" required value="${localDateTimeInput(d)}"></label><label>Lặp lại<select name="recurrence"><option value="once" ${item?.recurrence === "once" || !item ? "selected" : ""}>Một lần</option><option value="daily" ${item?.recurrence === "daily" ? "selected" : ""}>Hằng ngày</option><option value="weekly" ${item?.recurrence === "weekly" ? "selected" : ""}>Hằng tuần</option></select></label></div><p class="small muted">Nhóm dùng model riêng bảo mật; DM dùng Hermes/OpenClaw. Kết quả được phản hồi vào đúng hội thoại đã chọn.</p><div id="calendar-error" class="small red"></div><div class="modal-actions"><button type="button" data-close>Hủy</button>${item ? `<button type="button" id="calendar-toggle">${item.enabled ? "Tạm dừng" : "Bật lại"}</button><button type="button" class="danger" id="calendar-delete">Xóa lịch</button>` : ""}<button class="primary">${item ? "Lưu thay đổi" : "Tạo lịch"}</button></div></form>`;
   if (!modal.open) modal.showModal();
   modal
     .querySelectorAll("[data-close]")
@@ -342,6 +342,7 @@ async function showChatSettings(target) {
     ["persona", "Tính cách"],
     ["conversation", "Hội thoại"],
     ["knowledge", "Tri thức & Skill"],
+    ...(target.kind === "group" ? [["brain", "Trí nhớ & Topic"]] : []),
     ["connection", "Não & Chất lượng"],
     ["style", "Trình bày"],
     ["policy", "Quyền & Lời chào"],
@@ -352,7 +353,7 @@ async function showChatSettings(target) {
     )
     .join(
       "",
-    )}</nav><form id="chat-profile-form"><section data-profile-section="persona"><label>Tính cách trong nhóm / DM<textarea name="personality" maxlength="2000" rows="9" placeholder="Bot xưng hô thế nào, vai trò, cách tư duy, phong cách trao đổi…">${escape(p.personality)}</textarea></label><p class="small muted"><span id="personality-count">${p.personality.length}</span>/2000 ký tự. Nạp lại từ database cho mỗi lượt xử lý, áp dụng riêng hội thoại này.</p></section><section data-profile-section="conversation" hidden><h3>Trả lời lần lượt</h3><label class="check"><input type="checkbox" name="sequentialReplies" ${p.sequentialReplies !== false ? "checked" : ""}>Trả lời lần lượt</label><p class="small">Khi bật, bot xử lý câu hỏi theo thứ tự nhận trong hội thoại, gửi xong phản hồi trước rồi mới xử lý câu tiếp theo. Các nhóm khác vẫn hoạt động độc lập. Lượt lỗi không tự chạy lại và không khóa các câu hỏi mới.</p><p class="small muted">Khi tắt, có thể xử lý đồng thời tối đa 2 lượt; câu trả lời có thể về khác thứ tự. Nên bật Tag / Reply để dễ theo dõi. Thay đổi áp dụng cho lượt mới, không hủy lượt đang chạy.</p><h3>Tag / Reply đúng câu hỏi</h3><label>Khi trả lời<select name="replyTarget"><option value="none" ${!p.replyTarget || p.replyTarget === "none" ? "selected" : ""}>Tắt — trả lời thông thường</option><option value="reply" ${p.replyTarget === "reply" ? "selected" : ""}>Reply — trích dẫn đúng tin nhắn gốc</option><option value="tag" ${p.replyTarget === "tag" ? "selected" : ""}>Tag — nhắc đúng người hỏi</option><option value="both" ${p.replyTarget === "both" ? "selected" : ""}>Tag + Reply — nhắc người hỏi và trích dẫn câu hỏi</option></select></label><p class="small">Reply gắn với ID tin nhắn gốc, không dựa vào nội dung do AI tự đoán. Tag áp dụng trong nhóm; DM dùng Reply. Với tin cũ thiếu dữ liệu Reply, bot dùng Tag người hỏi nếu có thông tin, không gắn nhầm câu hỏi khác.</p></section><section data-profile-section="knowledge" hidden><h3>Tri thức tham khảo</h3><div class="row"><label class="upload-label">Chọn file<input id="profile-file" type="file" accept=".txt,.md,.markdown,.csv,.json,.html,.pdf,.docx,.yaml,.yml"></label><button type="button" data-browse-source="folder">Browse thư mục</button><button type="button" data-browse-source="skill">Browse Skill</button></div><p class="small">File tối đa 8 MB. Thư mục đọc tối đa 100 file/20 MB. Tài liệu lớn được chọn trích đoạn phù hợp; bấm Làm mới khi file hoặc trang web thay đổi. Skill nạp hướng dẫn SKILL.md, không tự cài công cụ/chạy script.</p><div class="form-grid"><label>Link trang web<input id="profile-url" type="url" placeholder="https://…"></label><div class="profile-align-end"><button type="button" id="profile-add-url">Thêm link</button></div></div><label>Tri thức khác / ghi chú<textarea id="profile-note" maxlength="60000" rows="3" placeholder="FAQ, quy định riêng, thông tin tham khảo…"></textarea></label><button type="button" id="profile-add-note">Thêm ghi chú</button><div id="profile-browser" class="profile-browser" hidden></div><div id="profile-sources" class="profile-sources"></div><pre id="profile-source-preview" class="profile-preview" hidden></pre></section><section data-profile-section="connection" hidden><label>Não / Agent<select name="brain"><option value="auto" ${p.brain === "auto" ? "selected" : ""}>Theo Main & Backup</option><option value="hermes" ${p.brain === "hermes" ? "selected" : ""}>Hermes</option><option value="openclaw" ${p.brain === "openclaw" ? "selected" : ""}>OpenClaw</option></select></label><p class="small">Auto dùng model mặc định của Main/Backup. Khi chọn model riêng, chọn rõ agent. Nếu agent ưu tiên lỗi, hệ thống chỉ dùng backend phù hợp với chính sách bảo vệ.</p><div id="profile-model-fields"><div class="row"><button type="button" id="profile-load-models">Tải danh sách model</button><span class="small muted" id="profile-model-state"></span></div><label>Chọn model có sẵn<select id="profile-model-picker"><option value="">Chọn model hoặc nhập bên dưới</option></select></label><div class="form-grid"><label>Model ID<input name="model" value="${escape(p.model)}" placeholder="Để trống dùng mặc định"></label><label>Provider (Hermes)<input name="provider" value="${escape(p.provider)}" placeholder="Ví dụ: custom, nous, anthropic"></label></div><p class="small">OpenClaw dùng ID provider/model; lựa chọn model phụ thuộc cấu hình và quyền trên gateway.</p></div><h3>OpenClaw hỗ trợ Hermes</h3><label class="check"><input type="checkbox" name="openClawSupport" ${p.openClawSupport !== false ? "checked" : ""}>Dùng OpenClaw làm supporter khi Hermes là Main</label><p class="small">Khi bật và cả hai agent online, các yêu cầu phân tích, đánh giá, tra cứu hoặc xử lý nội dung sẽ được Hermes phân tích rồi giao nhiệm vụ cụ thể cho OpenClaw; Hermes nhận kết quả và trả lời. Khi tắt, Hermes tự xử lý. Nếu Hermes offline, OpenClaw vẫn tự tiếp quản theo chính sách Main & Backup.</p><h3>Hermes tổng hợp sau OpenClaw</h3><label>Chế độ tổng hợp<select name="handoffSynthesis"><option value="fast" ${p.handoffSynthesis !== "verify" ? "selected" : ""}>Nhanh — chỉ tổng hợp kết quả, không tra cứu lại</option><option value="verify" ${p.handoffSynthesis === "verify" ? "selected" : ""}>Kiểm chứng lại — cho phép Hermes dùng công cụ (chậm hơn)</option></select></label><p class="small">Chế độ Nhanh dùng Hermes riêng không có công cụ, giữ nguyên số liệu, nguồn và phần chưa xác nhận từ OpenClaw. Chất lượng và độ dài bên dưới vẫn áp dụng; OpenClaw vẫn nghiên cứu theo yêu cầu. Chọn Kiểm chứng lại khi cần Hermes tự kiểm tra nguồn độc lập.</p><h3>Chất lượng câu trả lời</h3>${[
+    )}</nav><form id="chat-profile-form"><section data-profile-section="persona"><label>Tính cách trong nhóm / DM<textarea name="personality" maxlength="2000" rows="9" placeholder="Bot xưng hô thế nào, vai trò, cách tư duy, phong cách trao đổi…">${escape(p.personality)}</textarea></label><p class="small muted"><span id="personality-count">${p.personality.length}</span>/2000 ký tự. Nạp lại từ database cho mỗi lượt xử lý, áp dụng riêng hội thoại này.</p></section><section data-profile-section="conversation" hidden><h3>Trả lời lần lượt</h3><label class="check"><input type="checkbox" name="sequentialReplies" ${p.sequentialReplies !== false ? "checked" : ""}>Trả lời lần lượt</label><p class="small">Khi bật, bot xử lý câu hỏi theo thứ tự nhận trong hội thoại, gửi xong phản hồi trước rồi mới xử lý câu tiếp theo. Các nhóm khác vẫn hoạt động độc lập. Lượt lỗi không tự chạy lại và không khóa các câu hỏi mới.</p><p class="small muted">Khi tắt, có thể xử lý đồng thời tối đa 2 lượt; câu trả lời có thể về khác thứ tự. Nên bật Tag / Reply để dễ theo dõi. Thay đổi áp dụng cho lượt mới, không hủy lượt đang chạy.</p><h3>Tag / Reply đúng câu hỏi</h3><label>Khi trả lời<select name="replyTarget"><option value="none" ${!p.replyTarget || p.replyTarget === "none" ? "selected" : ""}>Tắt — trả lời thông thường</option><option value="reply" ${p.replyTarget === "reply" ? "selected" : ""}>Reply — trích dẫn đúng tin nhắn gốc</option><option value="tag" ${p.replyTarget === "tag" ? "selected" : ""}>Tag — nhắc đúng người hỏi</option><option value="both" ${p.replyTarget === "both" ? "selected" : ""}>Tag + Reply — nhắc người hỏi và trích dẫn câu hỏi</option></select></label><p class="small">Reply gắn với ID tin nhắn gốc, không dựa vào nội dung do AI tự đoán. Tag áp dụng trong nhóm; DM dùng Reply. Với tin cũ thiếu dữ liệu Reply, bot dùng Tag người hỏi nếu có thông tin, không gắn nhầm câu hỏi khác.</p></section>${target.kind === "group" ? `<section data-profile-section="brain" hidden><h3>Trí nhớ riêng nhóm</h3><p class="small">Model trực tiếp, không công cụ và không session agent dùng chung. Không chuyển sang agent chung khi lỗi. Cấu hình giao việc / lệnh không áp dụng cho nhóm.</p><label class="check"><input type="checkbox" name="groupMemoryEnabled" ${p.groupMemoryEnabled !== false ? "checked" : ""}>Lắng nghe và tổng hợp nhóm được cấp quyền</label><label>Chu kỳ tổng hợp (phút)<input type="number" name="groupSummaryMinutes" min="5" max="1440" value="${p.groupSummaryMinutes || 15}"></label><p class="small muted">Ghi nhận cả tin không tag. Im lặng / thu hồi quyền dừng tiếp nhận. Tắt ghi nhớ dừng tổng hợp, giữ tương tác trực tiếp và dữ liệu đã lưu.</p><div class="row"><button type="button" id="brain-reload">Làm mới trí nhớ</button><button type="button" id="brain-summarize">Tổng hợp ngay</button><button type="button" id="brain-rebuild">Tổng hợp lại từ nguồn</button></div><div id="brain-view"></div></section>` : ""}<section data-profile-section="knowledge" hidden><h3>Tri thức tham khảo</h3><div class="row"><label class="upload-label">Chọn file<input id="profile-file" type="file" accept=".txt,.md,.markdown,.csv,.json,.html,.pdf,.docx,.yaml,.yml"></label><button type="button" data-browse-source="folder">Browse thư mục</button><button type="button" data-browse-source="skill">Browse Skill</button></div><p class="small">File tối đa 8 MB. Thư mục đọc tối đa 100 file/20 MB. Tài liệu lớn được chọn trích đoạn phù hợp; bấm Làm mới khi file hoặc trang web thay đổi. Skill nạp hướng dẫn SKILL.md, không tự cài công cụ/chạy script.</p><div class="form-grid"><label>Link trang web<input id="profile-url" type="url" placeholder="https://…"></label><div class="profile-align-end"><button type="button" id="profile-add-url">Thêm link</button></div></div><label>Tri thức khác / ghi chú<textarea id="profile-note" maxlength="60000" rows="3" placeholder="FAQ, quy định riêng, thông tin tham khảo…"></textarea></label><button type="button" id="profile-add-note">Thêm ghi chú</button><div id="profile-browser" class="profile-browser" hidden></div><div id="profile-sources" class="profile-sources"></div><pre id="profile-source-preview" class="profile-preview" hidden></pre></section><section data-profile-section="connection" hidden><label>Não / Agent<select name="brain"><option value="auto" ${p.brain === "auto" ? "selected" : ""}>Theo Main & Backup</option><option value="hermes" ${p.brain === "hermes" ? "selected" : ""}>Hermes</option><option value="openclaw" ${p.brain === "openclaw" ? "selected" : ""}>OpenClaw</option></select></label><p class="small">Auto dùng model mặc định của Main/Backup. Khi chọn model riêng, chọn rõ agent. Nếu agent ưu tiên lỗi, hệ thống chỉ dùng backend phù hợp với chính sách bảo vệ.</p><div id="profile-model-fields"><div class="row"><button type="button" id="profile-load-models">Tải danh sách model</button><span class="small muted" id="profile-model-state"></span></div><label>Chọn model có sẵn<select id="profile-model-picker"><option value="">Chọn model hoặc nhập bên dưới</option></select></label><div class="form-grid"><label>Model ID<input name="model" value="${escape(p.model)}" placeholder="Để trống dùng mặc định"></label><label>Provider (Hermes)<input name="provider" value="${escape(p.provider)}" placeholder="Ví dụ: custom, nous, anthropic"></label></div><p class="small">OpenClaw dùng ID provider/model; lựa chọn model phụ thuộc cấu hình và quyền trên gateway.</p></div><h3>OpenClaw hỗ trợ Hermes</h3><label class="check"><input type="checkbox" name="openClawSupport" ${p.openClawSupport !== false ? "checked" : ""}>Dùng OpenClaw làm supporter khi Hermes là Main</label><p class="small">Khi bật và cả hai agent online, các yêu cầu phân tích, đánh giá, tra cứu hoặc xử lý nội dung sẽ được Hermes phân tích rồi giao nhiệm vụ cụ thể cho OpenClaw; Hermes nhận kết quả và trả lời. Khi tắt, Hermes tự xử lý. Nếu Hermes offline, OpenClaw vẫn tự tiếp quản theo chính sách Main & Backup.</p><h3>Hermes tổng hợp sau OpenClaw</h3><label>Chế độ tổng hợp<select name="handoffSynthesis"><option value="fast" ${p.handoffSynthesis !== "verify" ? "selected" : ""}>Nhanh — chỉ tổng hợp kết quả, không tra cứu lại</option><option value="verify" ${p.handoffSynthesis === "verify" ? "selected" : ""}>Kiểm chứng lại — cho phép Hermes dùng công cụ (chậm hơn)</option></select></label><p class="small">Chế độ Nhanh dùng Hermes riêng không có công cụ, giữ nguyên số liệu, nguồn và phần chưa xác nhận từ OpenClaw. Chất lượng và độ dài bên dưới vẫn áp dụng; OpenClaw vẫn nghiên cứu theo yêu cầu. Chọn Kiểm chứng lại khi cần Hermes tự kiểm tra nguồn độc lập.</p><h3>Chất lượng câu trả lời</h3>${[
     ["short", "Ngắn gọn", "Suy luận đơn giản, trả lời ngắn và trực tiếp."],
     [
       "balanced",
@@ -373,7 +374,31 @@ async function showChatSettings(target) {
       "",
     )}<p class="small">Độ sâu thực tế phụ thuộc model; hệ thống không yêu cầu hoặc hiển thị suy luận nội bộ. Không bịa link khi chưa có nguồn.</p></section><section data-profile-section="style" hidden><h3>Trình bày câu trả lời</h3><label class="profile-option"><input type="radio" name="presentation" value="color" ${p.presentation === "color" ? "checked" : ""}><span><strong>Màu Xanh · Đỏ · Vàng</strong><small>Xanh cho ý chính, đỏ cho cảnh báo, vàng cho lưu ý; dùng style native của Zalo.</small></span></label><label class="profile-option"><input type="radio" name="presentation" value="plain" ${p.presentation === "plain" ? "checked" : ""}><span><strong>Text đơn giản</strong><small>Màu chữ mặc định của Zalo (đen trên giao diện sáng).</small></span></label><label class="check"><input type="checkbox" name="emoji" ${p.emoji ? "checked" : ""}>Bật thả reaction và dùng emoji trong câu trả lời</label><p class="small">Khi bật, bot có thể thả 👍 cho tin đã nhận vào hàng đợi. Khi tắt, bot không thả reaction mới và bỏ emoji khỏi câu trả lời.</p></section><section data-profile-section="policy" hidden><h3>Thực thi lệnh hệ thống</h3><label class="check"><input type="checkbox" name="systemCommands" ${p.systemCommands ? "checked" : ""}>Cho phép thực thi lệnh hệ thống</label><label>Danh sách lệnh không được phép (mỗi dòng một lệnh/mẫu)<textarea name="deniedCommands" rows="5" maxlength="4000" placeholder="rm -rf&#10;sudo&#10;shutdown">${escape(p.deniedCommands)}</textarea></label><div id="profile-guard-state" class="note ${state.guard.ready ? "" : "warn"}">${state.guard.ready ? "Guard Hermes đang hoạt động." : "Guard Hermes chưa hoạt động; chưa thể lưu chính sách lệnh hạn chế."}</div><p class="small">Guard kiểm tra từng tool call, không chỉ nhắc bằng prompt. Khi có lệnh cấm, chỉ hỗ trợ lệnh đọc trực tiếp và chặn script/chuỗi shell. Đây không phải sandbox hệ điều hành. OpenClaw chưa có guard này: yêu cầu có chính sách hạn chế sẽ bị chặn.</p>${target.kind === "group" ? `<h3>Lời chào thành viên mới</h3><label>Nội dung chào (để trống để tắt)<textarea name="welcome" rows="4" maxlength="2000" placeholder="Chào {members}, mừng bạn đến với {group}!">${escape(p.welcome)}</textarea></label><p class="small">{members} được thay bằng tag thật của thành viên mới; {group} là tên nhóm. Nếu không dùng {members}, bot tự thêm tag vào đầu tin. Chỉ gửi khi nhóm được cấp quyền, bật phản hồi và không ở chế độ Im lặng.</p>` : ""}</section><footer class="profile-footer"><span id="profile-save-state" class="small muted">Thay đổi áp dụng từ lượt xử lý tiếp theo.</span><button type="submit" class="primary">Lưu cấu hình hội thoại</button></footer></form>`;
   if (!modal.open) modal.showModal();
+  if (target.kind === "group") await renderGroupBrain(base, query, target);
   const form = modal.querySelector("#chat-profile-form");
+  if (target.kind === "group") {
+    for (const name of [
+      "brain",
+      "model",
+      "provider",
+      "openClawSupport",
+      "handoffSynthesis",
+      "systemCommands",
+      "deniedCommands",
+    ]) {
+      form.querySelector(`[name="${name}"]`).disabled = true;
+    }
+    modal.querySelector("#profile-load-models").disabled = true;
+    modal.querySelector("#profile-model-picker").disabled = true;
+    modal
+      .querySelector('[data-profile-section="connection"]')
+      .insertAdjacentHTML(
+        "afterbegin",
+        '<p class="note">Nhóm dùng model riêng không công cụ và không chia sẻ phiên. Các lựa chọn agent bên dưới không áp dụng; chất lượng câu trả lời vẫn điều chỉnh được.</p>',
+      );
+    modal.querySelector("#profile-guard-state").hidden = true;
+  }
+
   const noteInput = modal.querySelector("#profile-note");
   const noteAdd = modal.querySelector("#profile-add-note");
   const noteState = document.createElement("span");
@@ -460,6 +485,13 @@ async function showChatSettings(target) {
     button.disabled = true;
     try {
       const profile = {
+        groupMemoryEnabled:
+          target.kind === "group"
+            ? f.has("groupMemoryEnabled")
+            : p.groupMemoryEnabled,
+        groupSummaryMinutes: Number(
+          f.get("groupSummaryMinutes") || p.groupSummaryMinutes || 15,
+        ),
         personality: String(f.get("personality") || ""),
         brain: f.get("brain"),
         model: String(f.get("model") || ""),
@@ -475,6 +507,18 @@ async function showChatSettings(target) {
         deniedCommands: String(f.get("deniedCommands") || ""),
         welcome: String(f.get("welcome") || ""),
       };
+      if (target.kind === "group") {
+        for (const name of [
+          "brain",
+          "model",
+          "provider",
+          "openClawSupport",
+          "handoffSynthesis",
+          "systemCommands",
+          "deniedCommands",
+        ])
+          profile[name] = p[name];
+      }
       if (profile.brain === "auto") {
         profile.model = "";
         profile.provider = "";
@@ -668,7 +712,11 @@ modal.addEventListener("close", () =>
 function dmContactsPanel() {
   const users = dmContactsData.contacts,
     allowed = users.filter((c) => c.allowed).length;
-  return `<section class="card" id="dm-contacts"><div class="card-head"><div><h2>Quyền trò chuyện với bot</h2><p class="small">Quản lý riêng quyền DM và quyền phản hồi trong nhóm.</p></div><div class="row"><button id="sync-zalo-groups">Đồng bộ nhóm</button><button data-policy-advanced>Cài đặt nhóm & UID</button><button id="add-dm-user" class="primary" ${dmContactsData.accountId ? "" : "disabled"}>＋ Thêm ID</button></div></div><div class="card-body"><div class="row spread"><div class="row" role="group" aria-label="Lọc quyền trò chuyện"><button data-dm-filter="all" class="${dmFilter === "all" ? "primary" : "subtle"}">Tất cả (${users.length})</button><button data-dm-filter="allowed" class="${dmFilter === "allowed" ? "primary" : "subtle"}">Được phép (${allowed})</button><button data-dm-filter="pending" class="${dmFilter === "pending" ? "primary" : "subtle"}">Chưa cấp quyền (${users.length - allowed})</button></div><label class="contact-search">Tìm người dùng hoặc nhóm<input id="dm-contact-search" type="search" value="${escape(dmSearch)}" placeholder="Tìm theo tên hoặc UID…" autocomplete="off"></label></div><p class="small">Bảng gồm người dùng/nhóm đã được ghi nhận hoặc thêm ID thủ công, không phải toàn bộ lịch sử chat. Người mới nhắn bot một lần để xuất hiện; nhóm được đồng bộ từ Zalo. Chọn đúng loại và ID trước khi cấp quyền. Mỗi dòng có ba chế độ: Tag mới trả lời, Im lặng, Hóng chuyện. Tag phải là @mention đúng bot; tên gõ thường hoặc @all không tính.</p></div><div class="card-body contact-types"><div class="row" role="group" aria-label="Loại hội thoại"><button data-contact-kind="all" class="${contactKind === "all" ? "primary" : "subtle"}">DM & Nhóm</button><button data-contact-kind="dm" class="${contactKind === "dm" ? "primary" : "subtle"}">Người dùng</button><button data-contact-kind="group" class="${contactKind === "group" ? "primary" : "subtle"}">Nhóm</button></div><label class="check"><input id="groups-enabled" type="checkbox" ${dmContactsData.groupsEnabled ? "checked" : ""} ${dmContactsData.accountId ? "" : "disabled"}>Bật phản hồi trong các nhóm đã cấp quyền</label><p class="small">${dmContactsData.groupsEnabled ? "Bot áp dụng chế độ trả lời đã chọn trên từng dòng nhóm." : "Phản hồi nhóm đang tắt; cấp quyền cho từng nhóm chưa tự bật công tắc này."}</p></div><div id="dm-contact-rows">${dmContactRows()}</div></section>`;
+  const onboarding =
+    dmContactsData.accountId && !dmContactsData.policyConfigured
+      ? `<div class="note warn account-setup"><strong>Cần rà soát quyền cho tài khoản Zalo ${escape(dmContactsData.accountId)}.</strong><p>Tài khoản chưa có cấu hình riêng. Quyền của tài khoản Zalo trước không được tự áp dụng; mọi DM và nhóm đang bị chặn cho đến khi anh chọn lại. ${dmContactsData.legacyPolicyAvailable ? "Có danh sách quyền cũ được giữ lại nhưng chưa nhập vào tài khoản này." : ""}</p><ol><li>Đồng bộ nhóm rồi lọc danh sách theo Nhóm.</li><li>Chọn nhóm cần dùng và đặt chế độ <b>Tag mới trả lời</b> để tránh trả lời tràn lan.</li><li>Chỉ thêm UID DM sau khi xác minh đúng người. UID được cấp DM đồng thời có quyền Bot Owner.</li><li>Bật phản hồi nhóm sau khi đã chọn nhóm.</li></ol><button type="button" data-policy-advanced class="primary">Rà soát quyền tài khoản này</button></div>`
+      : "";
+  return `<section class="card" id="dm-contacts"><div class="card-head"><div><h2>Quyền trò chuyện với bot</h2><p class="small">Quyền được lưu riêng theo tài khoản Zalo đang kết nối.</p></div><div class="row"><button id="sync-zalo-groups">Đồng bộ nhóm</button><button data-policy-advanced>Cài đặt nhóm & UID</button><button id="add-dm-user" class="primary" ${dmContactsData.accountId ? "" : "disabled"}>＋ Thêm ID</button></div></div>${onboarding}<div class="card-body"><div class="row spread"><div class="row" role="group" aria-label="Lọc quyền trò chuyện"><button data-dm-filter="all" class="${dmFilter === "all" ? "primary" : "subtle"}">Tất cả (${users.length})</button><button data-dm-filter="allowed" class="${dmFilter === "allowed" ? "primary" : "subtle"}">Được phép (${allowed})</button><button data-dm-filter="pending" class="${dmFilter === "pending" ? "primary" : "subtle"}">Chưa cấp quyền (${users.length - allowed})</button></div><label class="contact-search">Tìm người dùng hoặc nhóm<input id="dm-contact-search" type="search" value="${escape(dmSearch)}" placeholder="Tìm theo tên hoặc UID…" autocomplete="off"></label></div><p class="small">Bảng gồm người dùng/nhóm đã được ghi nhận hoặc thêm ID thủ công, không phải toàn bộ lịch sử chat. Người mới nhắn bot một lần để xuất hiện; nhóm được đồng bộ từ Zalo. Chọn đúng loại và ID trước khi cấp quyền. Mỗi dòng có ba chế độ: Tag mới trả lời, Im lặng, Hóng chuyện. Tag phải là @mention đúng bot; tên gõ thường hoặc @all không tính.</p></div><div class="card-body contact-types"><div class="row" role="group" aria-label="Loại hội thoại"><button data-contact-kind="all" class="${contactKind === "all" ? "primary" : "subtle"}">DM & Nhóm</button><button data-contact-kind="dm" class="${contactKind === "dm" ? "primary" : "subtle"}">Người dùng</button><button data-contact-kind="group" class="${contactKind === "group" ? "primary" : "subtle"}">Nhóm</button></div><label class="check"><input id="groups-enabled" type="checkbox" ${dmContactsData.groupsEnabled ? "checked" : ""} ${dmContactsData.accountId ? "" : "disabled"}>Bật phản hồi trong các nhóm đã cấp quyền</label><p class="small">${dmContactsData.groupsEnabled ? "Bot áp dụng chế độ trả lời đã chọn trên từng dòng nhóm." : "Phản hồi nhóm đang tắt; cấp quyền cho từng nhóm chưa tự bật công tắc này."}</p></div><div id="dm-contact-rows">${dmContactRows()}</div></section>`;
 }
 function dmContactRows() {
   const norm = (v) =>
@@ -787,7 +835,7 @@ function bindDmRows() {
           toast(
             b.dataset.allowed === "true"
               ? b.dataset.contactType === "group"
-                ? "Đã cấp quyền nhóm; chỉ phản hồi nếu công tắc nhóm đang bật."
+                ? "Đã cấp quyền nhóm; mặc định chỉ trả lời khi tag đúng bot. Bật công tắc nhóm để hoạt động."
                 : "Đã cho phép DM. Người dùng gửi tin mới để bắt đầu."
               : "Đã thu hồi quyền truy cập.",
           );
@@ -1163,9 +1211,23 @@ setInterval(async () => {
 }, 1000);
 async function showPolicy() {
   const { policy } = await api("/zalo");
-  modal.innerHTML = `<h2>Quyền truy cập Zalo</h2><p class="small">Các UID trong danh sách này vừa được phép DM, vừa được nhận diện là Bot Owner. Yêu cầu rõ ràng từ Owner được thực hiện ngay, không cần xác nhận mã. Nếu thiếu nhóm/người nhận, nội dung hoặc phạm vi, bot sẽ hỏi đúng phần còn thiếu. Owner vẫn tuân theo quyền nhóm, quyền công cụ và guard hệ thống. Nhập UID chính xác, phân tách bằng dấu phẩy. Để trống nghĩa là không cấp quyền DM/Owner cho ai.</p><form><label>UID Bot Owner / người dùng được phép<textarea name="users" placeholder="123456789, 987654321">${escape(policy.allowUsers.join(", "))}</textarea></label><label class="check"><input type="checkbox" name="groups" ${policy.groupsEnabled ? "checked" : ""}>Cho phép bot xử lý tin trong nhóm đã chọn</label><label>ID nhóm được phép<textarea name="groupIds">${escape(policy.allowGroups.join(", "))}</textarea></label><div class="note warn">Trong bản đầu, bot xử lý mọi tin text ở nhóm được cho phép. Chỉ bật với nhóm thử nghiệm hoặc nhóm dành riêng cho bot.</div><div class="modal-actions"><button type="button" data-close>Hủy</button><button class="primary">Lưu phân quyền</button></div></form>`;
+  modal.innerHTML = `<h2>Quyền truy cập Zalo</h2><p class="small">Cấu hình chỉ áp dụng cho tài khoản Zalo đang kết nối. Các UID trong danh sách vừa được phép DM, vừa được nhận diện là Bot Owner. Yêu cầu rõ ràng từ Owner được thực hiện ngay; nếu thiếu đối tượng, nội dung hoặc phạm vi, bot sẽ hỏi phần còn thiếu. Owner vẫn tuân theo quyền nhóm, quyền công cụ và guard hệ thống. Nhập UID chính xác, phân tách bằng dấu phẩy. Để trống nghĩa là không cấp quyền DM/Owner cho ai.</p>${policy.legacyPolicyAvailable ? '<div class="note warn">Có cấu hình quyền cũ đang được giữ lại. Nạp vào biểu mẫu để rà soát; quyền chỉ được chuyển sang tài khoản này sau khi anh bấm Lưu.</div><button type="button" id="load-legacy-policy">Nạp quyền cũ để rà soát</button>' : ""}<form><label>UID Bot Owner / người dùng được phép<textarea name="users" placeholder="123456789, 987654321">${escape(policy.allowUsers.join(", "))}</textarea></label><label class="check"><input type="checkbox" name="groups" ${policy.groupsEnabled ? "checked" : ""}>Cho phép bot xử lý tin trong nhóm đã chọn</label><label>ID nhóm được phép<textarea name="groupIds">${escape(policy.allowGroups.join(", "))}</textarea></label><p class="small">Nhóm mới được đặt mặc định là “Tag mới trả lời”. Chỉ bật phản hồi nhóm sau khi đã rà soát đúng ID nhóm.</p><div class="modal-actions"><button type="button" data-close>Hủy</button><button class="primary">Lưu phân quyền</button></div></form>`;
   modal.showModal();
   modal.querySelector("[data-close]").onclick = () => modal.close();
+  modal.querySelector("#load-legacy-policy")?.addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    button.disabled = true;
+    try {
+      const legacy = await api("/zalo/policy/legacy");
+      modal.querySelector('[name="users"]').value = legacy.allowUsers.join(", ");
+      modal.querySelector('[name="groupIds"]').value = legacy.allowGroups.join(", ");
+      modal.querySelector('[name="groups"]').checked = legacy.groupsEnabled;
+      toast("Đã nạp vào biểu mẫu. Rà soát ID rồi bấm Lưu để áp dụng cho tài khoản này.");
+    } catch (err) {
+      toast(err.message);
+      button.disabled = false;
+    }
+  });
   modal.querySelector("form").onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target),
@@ -1667,3 +1729,108 @@ setInterval(async () => {
 const session = await api("/session");
 if (session.authenticated) await render();
 else login();
+
+async function renderGroupBrain(base, query, target) {
+  const panel = modal.querySelector("#brain-view");
+  if (!panel) return;
+  const refresh = () => renderGroupBrain(base, query, target);
+  const mutate = async (path, method, body) => {
+    try {
+      await api(base + "/brain/" + path, {
+        method,
+        body: { accountId: target.accountId, ...body },
+      });
+      await refresh();
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+  modal.querySelector("#brain-reload").onclick = refresh;
+  modal.querySelector("#brain-summarize").onclick = () =>
+    mutate("summarize", "POST", {});
+  modal.querySelector("#brain-rebuild").onclick = () =>
+    mutate("rebuild", "POST", {});
+  try {
+    const data = await api(base + "/brain" + query);
+    const statuses = {
+      proposed: "AI trích xuất · chưa xác nhận",
+      confirmed: "Đã xác nhận",
+      disputed: "Cần xác minh",
+      rejected: "Đã bác bỏ",
+      superseded: "Đã thay thế",
+    };
+    panel.innerHTML = `<p class="small">Đã ghi nhận: ${escape(data.counts.total)} · Chưa tổng hợp: ${escape(data.counts.pending)} · Nhiễu: ${escape(data.counts.noise)}</p><p class="small">Tổng hợp gần nhất: ${when(data.job?.last_success_at)} · Lần tới: ${when(data.job?.next_run_at)} · ${data.job?.lease ? "Đang tổng hợp" : "Đang chờ"}</p>${data.job?.last_error ? `<p class="note warn">${escape(data.job.last_error)}</p>` : ""}
+    ${data.overview ? `<h3>Tổng hợp cấp nhóm · v${escape(data.overview.revision)}</h3><p class="small muted">AI tổng hợp từ các topic được cung cấp, chưa phải xác nhận của nhóm.</p><pre class="profile-preview">${escape(data.overview.summary)}</pre>` : ""}<h3>Topic</h3>${data.topics.map((t) => `<details><summary>${escape(t.title)} · ${escape(t.status)} · v${escape(t.revision)}</summary><p class="small">Bản tổng hợp AI, cần đối chiếu bằng chứng.</p><pre class="profile-preview">${escape(t.summary)}</pre><button type="button" data-topic-edit="${escape(t.id)}">Sửa tên / trạng thái</button><button type="button" data-topic-merge="${escape(t.id)}">Gộp topic</button><button type="button" data-topic-split="${escape(t.id)}">Tách topic</button><p class="small mono">ID: ${escape(t.id)}</p></details>`).join("") || "<p>Chưa có topic.</p>"}
+    <h3>Bộ nhớ và bằng chứng</h3>${data.facts.map((f) => `<details><summary>${escape(f.category)} · ${escape(statuses[f.status])}: ${escape(f.content)}</summary>${f.conflicts?.length ? `<p class="note warn">Mâu thuẫn cần xác minh với: ${f.conflicts.map(escape).join(", ")}</p>` : ""}<p class="small">Hiệu lực từ ${when(f.valid_from)}${f.valid_to ? " đến " + when(f.valid_to) : ""}</p>${f.sources.map((r) => `<blockquote><strong>${escape(r.sender)}</strong> · ${when(r.at)}<p>${escape(r.content)}</p><small class="mono">${escape(r.id)}</small></blockquote>`).join("")}${!f.valid_to ? `<button type="button" data-fact-confirm="${escape(f.id)}">Xác nhận</button><button type="button" data-fact-reject="${escape(f.id)}">Bác bỏ</button><button type="button" data-fact-replace="${escape(f.id)}">Xác nhận và thay bản cũ</button>` : ""}<p class="small mono">ID: ${escape(f.id)}</p></details>`).join("") || "<p>Chưa có bộ nhớ.</p>"}`;
+    panel.insertAdjacentHTML(
+      "beforeend",
+      `<h3>Tin nguồn gần đây</h3>${data.records.map((r) => `<details><summary>${escape(r.sender_name)} · ${when(r.occurred_at)} · ${r.noise ? "Nhiễu" : "Giữ lại"}</summary><pre class="profile-preview">${escape(r.content)}</pre><p class="small mono">${escape(r.id)}</p><button type="button" data-record-id="${escape(r.id)}" data-record-noise="${r.noise ? "false" : "true"}">${r.noise ? "Giữ làm thông tin" : "Đánh dấu nhiễu"}</button></details>`).join("")}`,
+    );
+    panel.querySelectorAll("[data-record-id]").forEach(
+      (b) =>
+        (b.onclick = () =>
+          mutate("records/" + b.dataset.recordId, "PUT", {
+            noise: b.dataset.recordNoise === "true",
+          })),
+    );
+    panel
+      .querySelectorAll(
+        "[data-fact-confirm],[data-fact-reject],[data-fact-replace]",
+      )
+      .forEach(
+        (b) =>
+          (b.onclick = async () => {
+            const id =
+              b.dataset.factConfirm ||
+              b.dataset.factReject ||
+              b.dataset.factReplace;
+            const replacement = b.dataset.factReplace
+              ? prompt("ID bộ nhớ cũ cần thay thế trong cùng topic:")
+              : undefined;
+            if (b.dataset.factReplace && !replacement) return;
+            await mutate("facts/" + id, "PUT", {
+              status: b.dataset.factReject ? "rejected" : "confirmed",
+              replacement,
+            });
+          }),
+      );
+    panel.querySelectorAll("[data-topic-edit]").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          const topic = data.topics.find((t) => t.id === b.dataset.topicEdit);
+          const title = prompt("Tên topic:", topic.title);
+          if (!title) return;
+          const status = prompt("Trạng thái: active hoặc closed", topic.status);
+          if (!status) return;
+          await mutate("topics/" + topic.id, "PUT", { title, status });
+        }),
+    );
+    panel.querySelectorAll("[data-topic-merge]").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          const targetId = prompt("ID topic đích trong nhóm này:");
+          if (targetId)
+            await mutate("topics/" + b.dataset.topicMerge + "/merge", "POST", {
+              targetId,
+            });
+        }),
+    );
+    panel.querySelectorAll("[data-topic-split]").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          const title = prompt("Tên topic mới:");
+          if (!title) return;
+          const ids = prompt(
+            "ID các tin nguồn cần tách, phân cách bằng dấu phẩy:",
+          );
+          if (!ids) return;
+          await mutate("topics/" + b.dataset.topicSplit + "/split", "POST", {
+            title,
+            recordIds: ids.split(",").map((x) => x.trim()),
+          });
+        }),
+    );
+  } catch (error) {
+    panel.textContent = error.message;
+  }
+}
