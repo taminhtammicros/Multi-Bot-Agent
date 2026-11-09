@@ -132,7 +132,7 @@ export async function extractText(buffer: Buffer, name: string) {
     });
   return text.trim().slice(0, 200000);
 }
-function publicAddress(address: string) {
+export function publicAddress(address: string) {
   if (isIP(address) === 4) {
     const n = address.split(".").map(Number);
     return !(

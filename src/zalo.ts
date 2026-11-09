@@ -13,6 +13,10 @@ import { getZaloPolicy } from "./zalo-policy.js";
 import { enqueue } from "./engine.js";
 import { ZaloRecovery, type RecoveryOptions } from "./zalo-recovery.js";
 import { observeContact, observeGroup } from "./contacts.js";
+import { fetchZaloImages, zaloImageUrls } from "./zalo-images.js";
+import { zaloImageMetadata } from "./image-reader.js";
+import { zaloRelayPayload, type RelayEnvelope } from "./relay-input.js";
+import { RelayDeliveryError } from "./channel-relay.js";
 type BridgeOptions = {
   recovery?: Partial<RecoveryOptions>;
   loadSession?: () => Promise<any>;
@@ -20,6 +24,25 @@ type BridgeOptions = {
   recordEvent?: (kind: string, message: string) => Promise<void>;
 };
 export class ZaloBridge {
+  onRelayMessage?: (message: RelayEnvelope) => Promise<unknown>;
+  async sendRelay(chatId: string, text: string, path?: string) {
+    if (!this.api || this.state().status !== "connected")
+      throw new RelayDeliveryError("Zalo chưa kết nối.", false);
+    const result = await this.api.sendMessage(
+      path ? { msg: text, attachments: [path] } : text,
+      chatId,
+      ThreadType.Group,
+    );
+    if (
+      path &&
+      (!Array.isArray(result?.attachment) || result.attachment.length !== 1)
+    )
+      throw new RelayDeliveryError("Zalo chưa xác nhận file đính kèm.", true);
+    const id = result?.message?.msgId || result?.attachment?.[0]?.msgId;
+    if (!id || String(id) === "0")
+      throw new RelayDeliveryError("Zalo chưa xác nhận ID tin gửi.", true);
+    return String(id);
+  }
   constructor(
     private readonly createClient: (
       signal?: AbortSignal,
@@ -28,6 +51,7 @@ export class ZaloBridge {
         logging: false,
         checkUpdate: false,
         selfListen: true,
+        imageMetadataGetter: zaloImageMetadata,
         polyfill: signal
           ? (input, init) =>
               fetch(input, {
@@ -527,9 +551,10 @@ export class ZaloBridge {
       );
     }
     const cfg = await getZaloPolicy(
-      this.api ? String(this.api.getOwnId()) : null,
-    ),
+        this.api ? String(this.api.getOwnId()) : null,
+      ),
       group = m.type === ThreadType.Group;
+    const accountId = this.state().accountId;
     const allowed = group
       ? cfg.groupsEnabled && cfg.allowGroups.includes(String(m.threadId))
       : cfg.allowUsers.includes(String(m.data.uidFrom));
@@ -542,7 +567,6 @@ export class ZaloBridge {
       );
       return;
     }
-    const accountId = this.state().accountId;
     const mentioned = isBotMentioned(m, accountId);
     const mode = await replyMode(
       accountId,
@@ -551,6 +575,27 @@ export class ZaloBridge {
       cfg,
     );
     const shouldReply = permitsReply(mode, mentioned);
+    if (
+      group &&
+      accountId &&
+      mode !== "silent" &&
+      String(m.data?.uidFrom) !== accountId &&
+      m.data?.msgId &&
+      this.onRelayMessage
+    ) {
+      const payload = zaloRelayPayload(m.data);
+      if (payload)
+        await this.onRelayMessage({
+          platform: "zalo",
+          accountId,
+          chatId: String(m.threadId),
+          messageId: String(m.data.msgId),
+          at: sourceTime(m.data.ts),
+          payload,
+        });
+    }
+    const isImage = m.data?.msgType === "chat.photo";
+    const imageUrls = isImage ? zaloImageUrls(m.data) : [];
     if (group && accountId && mode !== "silent") {
       const profile = await getChatProfile(
         accountId,
@@ -558,8 +603,9 @@ export class ZaloBridge {
         String(m.threadId),
       );
       if (profile.groupMemoryEnabled || shouldReply) {
-        const text =
-          typeof m.data?.content === "string"
+        const text = isImage
+          ? "[Người dùng gửi ảnh]"
+          : typeof m.data?.content === "string"
             ? m.data.content
             : "[Nội dung đính kèm chưa được đọc; không suy đoán nội dung]";
         if (!m.data?.msgId) throw new Error("Tin nhóm thiếu ID nguồn.");
@@ -581,12 +627,15 @@ export class ZaloBridge {
             replySenderId: m.data.quote?.ownerId
               ? String(m.data.quote.ownerId)
               : null,
-            role: typeof m.data?.content === "string" ? "user" : "unsupported",
+            role:
+              typeof m.data?.content === "string" || isImage
+                ? "user"
+                : "unsupported",
           },
         );
       }
     }
-    if (typeof m.data?.content !== "string") {
+    if (typeof m.data?.content !== "string" && !isImage) {
       diag.unsupported++;
       diag.lastDecision = "unsupported_content";
       return;
@@ -595,6 +644,45 @@ export class ZaloBridge {
       diag.blocked++;
       diag.lastDecision = mode === "mention" ? "listening" : "silent";
       return;
+    }
+    let inboundImages;
+    if (isImage) {
+      if (!imageUrls.length) {
+        diag.unsupported++;
+        diag.lastDecision = "image_unavailable";
+        await event(
+          "zalo_image",
+          `Không lấy được URL ảnh từ tin Zalo ${String(m.data?.msgId || "")}`,
+        ).catch(() => {});
+        if (this.api)
+          await this.api
+            .sendMessage(
+              "Em nhận được ảnh nhưng chưa đọc được dữ liệu ảnh từ Zalo, nên chưa thể phân tích. Anh thử gửi lại ảnh dưới dạng JPG hoặc PNG nhé.",
+              String(m.threadId),
+              m.type,
+            )
+            .catch(() => {});
+        return;
+      }
+      try {
+        inboundImages = await fetchZaloImages(imageUrls);
+      } catch (error: any) {
+        diag.unsupported++;
+        diag.lastDecision = "image_download_failed";
+        await event(
+          "zalo_image",
+          String(error?.message || "Không tải được ảnh Zalo").slice(0, 180),
+        ).catch(() => {});
+        if (this.api)
+          await this.api
+            .sendMessage(
+              "Em nhận được ảnh nhưng tải ảnh để phân tích không thành công. Anh thử gửi lại ảnh JPG hoặc PNG nhé.",
+              String(m.threadId),
+              m.type,
+            )
+            .catch(() => {});
+        return;
+      }
     }
     const groupTitle =
       group && this.api
@@ -611,7 +699,7 @@ export class ZaloBridge {
         ? groupTitle || "Nhóm " + String(m.threadId)
         : String(m.data.dName || m.threadId),
       "zalo",
-      m.data.content,
+      isImage ? "[Người dùng gửi ảnh]" : m.data.content,
       group
         ? `zalo:${accountId}:group:${m.threadId}:${m.data.msgId}`
         : `zalo:${m.type}:${m.threadId}:${m.data.msgId}`,
@@ -621,6 +709,7 @@ export class ZaloBridge {
         botMentioned: mentioned,
         sourceAccountId: accountId || undefined,
         zaloReply: captureReplyTarget(m.data),
+        images: inboundImages,
       },
     );
     if (task) {
@@ -688,9 +777,11 @@ export class ZaloBridge {
       }
       const ownerStatus = status === "sent" ? "completed" : "review";
       const receipt =
-        status === "sent"
-          ? `Zalo đã nhận lệnh gửi vào nhóm ${row.group_id}. Nội dung: ${row.content}`
-          : `Chưa xác nhận được tin đã vào nhóm ${row.group_id}. ${detail} Em không tự gửi lại; hãy kiểm tra nhóm trước khi thử lần nữa.`;
+        status === "sent" && row.kind === "poll"
+          ? `Đã tạo Poll trong nhóm ${row.group_id}. Câu hỏi: ${row.content}. ${detail}`
+          : status === "sent"
+            ? `Zalo đã nhận lệnh gửi vào nhóm ${row.group_id}. Nội dung: ${row.content}`
+            : `Chưa xác nhận được tin đã vào nhóm ${row.group_id}. ${detail} Em không tự gửi lại; hãy kiểm tra nhóm trước khi thử lần nữa.`;
       await client.query(
         "UPDATE owner_actions SET status=$2,result=$3,updated_at=now() WHERE id=$1 AND status='executing'",
         [row.owner_action_id, ownerStatus, receipt],
@@ -712,8 +803,8 @@ export class ZaloBridge {
       client.release();
     }
     await event(
-      "owner_send",
-      `Owner-approved Zalo group send ${status} for ${row.group_id}`,
+      row.kind === "poll" ? "owner_poll" : "owner_send",
+      `Owner-approved Zalo ${row.kind === "poll" ? "poll" : "group send"} ${status} for ${row.group_id}`,
     );
   }
   private async flushOwnerGroupSends() {
@@ -753,16 +844,27 @@ export class ZaloBridge {
         continue;
       }
       try {
-        await api.sendMessage(
-          { msg: row.content },
-          row.group_id,
-          ThreadType.Group,
-        );
-        await this.finishOwnerGroupSend(
-          row,
-          "sent",
-          "Zalo API đã nhận yêu cầu gửi.",
-        );
+        let resultText = "Zalo API đã nhận yêu cầu gửi.";
+        if (row.kind === "poll") {
+          const payload =
+            typeof row.payload === "string"
+              ? JSON.parse(row.payload)
+              : row.payload || {};
+          const result = await api.createPoll(
+            { question: row.content, ...payload },
+            row.group_id,
+          );
+          if (!Number.isSafeInteger(result?.poll_id) || result.poll_id <= 0)
+            throw new Error("Zalo không trả Poll ID hợp lệ");
+          resultText = `Poll ID: ${result.poll_id}`;
+        } else {
+          await api.sendMessage(
+            { msg: row.content },
+            row.group_id,
+            ThreadType.Group,
+          );
+        }
+        await this.finishOwnerGroupSend(row, "sent", resultText);
       } catch {
         await this.finishOwnerGroupSend(
           row,
@@ -832,8 +934,26 @@ export class ZaloBridge {
           item.original_content,
           item.thread_type === ThreadType.Group,
         );
-        for (const chunk of chunks)
-          await this.api.sendMessage(chunk, item.thread_id, item.thread_type);
+        const attachments = (
+          await query(
+            "SELECT path FROM artifacts WHERE task_id=$1 ORDER BY created_at,id",
+            [item.task_id],
+          )
+        ).rows.map((row) => String(row.path));
+        for (let index = 0; index < chunks.length; index++) {
+          const chunk = chunks[index];
+          await this.api.sendMessage(
+            index === 0 && attachments.length
+              ? {
+                  msg: typeof chunk === "string" ? chunk : chunk.msg,
+                  attachments,
+                  ...(typeof chunk === "string" ? {} : chunk),
+                }
+              : chunk,
+            item.thread_id,
+            item.thread_type,
+          );
+        }
         await query("UPDATE outbox SET status='sent',error=null WHERE id=$1", [
           item.id,
         ]);

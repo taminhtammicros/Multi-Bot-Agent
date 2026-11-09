@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { enqueue } from "./engine.js";
 import { event, pool, query } from "./db.js";
 import { getZaloPolicy } from "./zalo-policy.js";
+import { botToolEnabled } from "./tools.js";
 
 export type CalendarInput = {
   title: string;
@@ -11,6 +12,7 @@ export type CalendarInput = {
   threadType: 0 | 1;
   targetName: string;
   runAt: string;
+  runTimes?: string[];
   recurrence: "once" | "daily" | "weekly";
 };
 
@@ -18,6 +20,45 @@ function instant(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
   const ms = Date.parse(`${value}:00+07:00`);
   return Number.isFinite(ms) ? new Date(ms) : null;
+}
+
+const vietnamDateKey = (date: Date) =>
+  new Date(date.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+function addDateDays(dateKey: string, days: number) {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function instantAt(dateKey: string, time: string) {
+  return new Date(`${dateKey}T${time}:00+07:00`);
+}
+
+function nextOccurrence(
+  startDate: string,
+  recurrence: CalendarInput["recurrence"],
+  runTimes: string[],
+  after: Date,
+) {
+  const firstDate = startDate < vietnamDateKey(after) ? vietnamDateKey(after) : startDate;
+  for (let offset = 0; offset <= 14; offset++) {
+    const dateKey = addDateDays(firstDate, offset);
+    if (
+      recurrence === "weekly" &&
+      Math.round(
+        (Date.parse(`${dateKey}T12:00:00Z`) -
+          Date.parse(`${startDate}T12:00:00Z`)) /
+          86400000,
+      ) % 7 !== 0
+    )
+      continue;
+    for (const time of runTimes) {
+      const candidate = instantAt(dateKey, time);
+      if (candidate.getTime() > after.getTime() + 15000) return candidate;
+    }
+  }
+  return null;
 }
 
 async function permitted(
@@ -85,10 +126,27 @@ export async function saveCalendar(
   accountId: string,
   id?: string,
 ) {
-  const runAt = instant(input.runAt);
+  const requested = instant(input.runAt);
+  const times = input.recurrence === "once"
+    ? [input.runAt.slice(11)]
+    : [...new Set(input.runTimes?.length ? input.runTimes : [input.runAt.slice(11)])].sort();
+  if (
+    !requested ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(input.runAt.slice(0, 10)) ||
+    !times.length ||
+    times.length > 24 ||
+    times.some((time) => !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))
+  )
+    throw Object.assign(
+      new Error("Kiểm tra ngày bắt đầu và các khung giờ chạy (giờ Việt Nam)."),
+      { statusCode: 400 },
+    );
+  const runAt = input.recurrence === "once"
+    ? requested
+    : nextOccurrence(input.runAt.slice(0, 10), input.recurrence, times, new Date());
   if (!runAt || runAt.getTime() <= Date.now() + 15000)
     throw Object.assign(
-      new Error("Chọn thời điểm trong tương lai (giờ Việt Nam)."),
+      new Error("Chọn ít nhất một khung giờ chạy trong tương lai (giờ Việt Nam)."),
       { statusCode: 400 },
     );
   if (!(await permitted(accountId, input.threadId, input.threadType)))
@@ -109,7 +167,7 @@ export async function saveCalendar(
     );
     if (id) {
       const changed = await client.query(
-        `UPDATE calendar_jobs SET title=$3,prompt=$4,account_id=$5,thread_id=$6,thread_type=$7,conversation_id=$8,recurrence=$9,next_run_at=$10,enabled=true,locked_at=null,updated_at=now()
+        `UPDATE calendar_jobs SET title=$3,prompt=$4,account_id=$5,thread_id=$6,thread_type=$7,conversation_id=$8,recurrence=$9,next_run_at=$10,run_times=$11,enabled=true,locked_at=null,updated_at=now()
          WHERE id=$1 AND account_id=$2 RETURNING id`,
         [
           id,
@@ -122,6 +180,7 @@ export async function saveCalendar(
           conversationId,
           input.recurrence,
           runAt,
+          times,
         ],
       );
       if (!changed.rowCount)
@@ -130,7 +189,7 @@ export async function saveCalendar(
         });
     } else {
       await client.query(
-        "INSERT INTO calendar_jobs(id,title,prompt,account_id,thread_id,thread_type,conversation_id,recurrence,next_run_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        "INSERT INTO calendar_jobs(id,title,prompt,account_id,thread_id,thread_type,conversation_id,recurrence,next_run_at,run_times) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
         [
           randomUUID(),
           input.title,
@@ -141,6 +200,7 @@ export async function saveCalendar(
           conversationId,
           input.recurrence,
           runAt,
+          times,
         ],
       );
     }
@@ -183,6 +243,7 @@ export async function setCalendarEnabled(id: string, enabled: boolean) {
 
 // Được gọi bởi worker; external_id duy nhất giúp khôi phục an toàn nếu dịch vụ dừng giữa hai bước.
 export async function tickCalendar() {
+  if (!(await botToolEnabled("scheduled_tasks"))) return;
   const due = await query(
     `UPDATE calendar_jobs SET locked_at=now() WHERE id=(
        SELECT id FROM calendar_jobs WHERE enabled AND next_run_at<=now()
@@ -222,12 +283,21 @@ export async function tickCalendar() {
         [job.id, taskId],
       );
     } else {
-      const step = job.recurrence === "daily" ? 86400000 : 7 * 86400000;
-      let next = scheduledAt.getTime() + step;
-      while (next <= Date.now()) next += step;
+      const runTimes = Array.isArray(job.run_times) && job.run_times.length
+        ? job.run_times
+        : [new Intl.DateTimeFormat("en-GB", {
+            timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", hour12: false,
+          }).format(scheduledAt)];
+      const next = nextOccurrence(
+        vietnamDateKey(scheduledAt),
+        job.recurrence,
+        runTimes,
+        new Date(),
+      );
+      if (!next) throw new Error("Không tính được lần chạy kế tiếp của lịch.");
       await query(
         "UPDATE calendar_jobs SET next_run_at=$2,locked_at=null,last_run_at=now(),last_task_id=COALESCE($3,last_task_id),updated_at=now() WHERE id=$1",
-        [job.id, new Date(next), taskId],
+        [job.id, next, taskId],
       );
     }
     await event(

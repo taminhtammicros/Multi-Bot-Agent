@@ -28,6 +28,7 @@ const names = {
   overview: "Tổng quan",
   channels: "Zalo & Telegram",
   calendar: "Lịch · Calendar",
+  tools: "TOOLS · Công cụ Bot",
   connections: "Kết nối Agents",
   conversations: "Hội thoại",
   tasks: "Công việc",
@@ -40,6 +41,7 @@ const paths = {
   channels: "M4 6h16v12H4z M8 10h3 M8 14h8 M16 6V4 M8 6V4",
   calendar:
     "M4 5h16v16H4z M8 3v4 M16 3v4 M4 9h16 M8 13h.01 M12 13h.01 M16 13h.01 M8 17h.01 M12 17h.01",
+  tools: "M14 7h6v6 M20 7l-8 8-4-4-5 5 M4 4h4",
   connections: "M8 12h8 M7 7H4v10h3 M17 7h3v10h-3 M8 4v16 M16 4v16",
   conversations: "M4 4h16v12H9l-5 4z",
   tasks: "M8 5h12v16H4V5h4 M8 3h8v4H8z M8 12h8 M8 16h5",
@@ -204,6 +206,16 @@ const monthLabel = (value) =>
     year: "numeric",
   }).format(value);
 let calendarMonth = new Date();
+let calendarView = "month";
+let calendarSelectedDate = localDateKey(Date.now());
+const fullDateLabel = (dateKey) =>
+  new Intl.DateTimeFormat("vi-VN", {
+    timeZone: calendarZone,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(`${dateKey}T12:00:00+07:00`));
 function calendarItemsForDay(job, dateKey) {
   const start = localDateKey(job.next_run_at);
   if (dateKey < start) return false;
@@ -214,6 +226,18 @@ function calendarItemsForDay(job, dateKey) {
       86400000,
   );
   return days >= 0 && days % 7 === 0;
+}
+function calendarTimesForDay(job, dateKey) {
+  if (!calendarItemsForDay(job, dateKey)) return [];
+  if (job.recurrence === "once") return [localClock(job.next_run_at)];
+  let times = Array.isArray(job.run_times) && job.run_times.length
+    ? job.run_times
+    : [localClock(job.next_run_at)];
+  if (dateKey === localDateKey(Date.now())) {
+    const now = localClock(Date.now());
+    times = times.filter((time) => time >= now);
+  }
+  return times;
 }
 function calendarPage(data, targets) {
   const monthFirst = new Date(
@@ -227,15 +251,15 @@ function calendarPage(data, targets) {
     const date = new Date(gridStart + i * 86400000);
     const key = localDateKey(date);
     const list = jobs
-      .filter((j) => calendarItemsForDay(j, key))
-      .sort((a, b) =>
-        localClock(a.next_run_at).localeCompare(localClock(b.next_run_at)),
-      );
-    return `<div class="calendar-day${key === today ? " today" : ""}${key.slice(0, 7) !== localDateKey(monthFirst).slice(0, 7) ? " outside" : ""}" data-calendar-day="${key}"><div class="calendar-day-head"><span>${date.getUTCDate()}</span><button data-calendar-add="${key}" title="Tạo lịch ngày này">＋</button></div>${list
+      .flatMap((job) =>
+        calendarTimesForDay(job, key).map((time) => ({ job, time })),
+      )
+      .sort((a, b) => a.time.localeCompare(b.time));
+    return `<div class="calendar-day${key === today ? " today" : ""}${key.slice(0, 7) !== localDateKey(monthFirst).slice(0, 7) ? " outside" : ""}" data-calendar-day="${key}"><div class="calendar-day-head"><button class="calendar-date-select" data-calendar-select="${key}" title="Xem lịch ngày ${key}">${date.getUTCDate()}</button><button data-calendar-add="${key}" title="Tạo lịch ngày này">＋</button></div>${list
       .slice(0, 3)
       .map(
         (j) =>
-          `<button class="calendar-event${j.enabled ? "" : " paused"}" data-calendar-edit="${j.id}" title="${escape(j.title)}">${localClock(j.next_run_at)} · ${escape(j.title)}</button>`,
+          `<button class="calendar-event${j.job.enabled ? "" : " paused"}" data-calendar-edit="${j.job.id}" title="${escape(j.job.title)}">${j.time} · ${escape(j.job.title)}</button>`,
       )
       .join(
         "",
@@ -245,13 +269,22 @@ function calendarPage(data, targets) {
     .filter((j) => j.enabled)
     .sort((a, b) => new Date(a.next_run_at) - new Date(b.next_run_at))
     .slice(0, 8);
+  const dayItems = jobs
+    .flatMap((job) =>
+      calendarTimesForDay(job, calendarSelectedDate).map((time) => ({ job, time })),
+    )
+    .sort((a, b) => a.time.localeCompare(b.time));
+  const title = calendarView === "day" ? fullDateLabel(calendarSelectedDate) : monthLabel(monthFirst);
+  const calendarContent = calendarView === "day"
+    ? `<div class="calendar-day-agenda">${dayItems.length ? dayItems.map(({ job, time }) => `<button class="calendar-agenda-item${job.enabled ? "" : " paused"}" data-calendar-edit="${job.id}"><span class="calendar-agenda-time">${time}</span><span class="calendar-agenda-copy"><strong>${escape(job.title)}</strong><small>${escape(job.target_name)} · ${job.recurrence === "once" ? "Một lần" : job.recurrence === "daily" ? "Hằng ngày" : "Hằng tuần"}</small></span>${badge(job.enabled ? "online" : "disconnected", job.enabled ? "Đang bật" : "Tạm dừng")}</button>`).join("") : empty("Ngày này chưa có lịch", "Tạo lịch mới cho ngày đang xem.")}</div>`
+    : `<div class="calendar-grid calendar-weekdays">${["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map((d) => `<strong>${d}</strong>`).join("")}</div><div class="calendar-grid">${days}</div>`;
   return (
     heading(
       "Lịch · Calendar",
       "Lên lịch để Hermes/OpenClaw xử lý và gửi kết quả vào hội thoại Zalo đã được cấp quyền. Múi giờ: Việt Nam (UTC+7).",
       '<button class="primary" data-calendar-add="">＋ Tạo lịch</button>',
     ) +
-    `<section class="card calendar-card"><div class="calendar-toolbar"><button data-calendar-shift="-1" aria-label="Tháng trước">‹</button><h2>${monthLabel(monthFirst)}</h2><button data-calendar-shift="1" aria-label="Tháng sau">›</button><button data-calendar-today class="subtle">Tháng này</button><span class="small muted">${jobs.filter((j) => j.enabled).length} lịch đang bật</span></div><div class="calendar-grid calendar-weekdays">${["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map((d) => `<strong>${d}</strong>`).join("")}</div><div class="calendar-grid">${days}</div></section><div class="calendar-bottom"><section class="card"><div class="card-head"><h2>Sắp tới</h2><span class="badge">${upcoming.length}</span></div>${upcoming.length ? `<div class="calendar-upcoming">${upcoming.map((j) => `<button data-calendar-edit="${j.id}"><span class="calendar-date">${escape(new Date(j.next_run_at).toLocaleString("vi-VN", { timeZone: calendarZone, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }))}</span><span><strong>${escape(j.title)}</strong><small>${escape(j.target_name)} · ${j.recurrence === "once" ? "Một lần" : j.recurrence === "daily" ? "Hằng ngày" : "Hằng tuần"}</small></span>${badge(j.enabled ? "online" : "disconnected", j.enabled ? "Đang bật" : "Tạm dừng")}</button>`).join("")}</div>` : empty("Chưa có lịch hẹn", "Tạo lịch để giao việc hoặc nhắc bot vào một hội thoại Zalo.")}</section><section class="card"><div class="card-head"><h2>Nguyên tắc gửi lịch</h2></div><div class="card-body"><p class="small">Lịch được lưu trong PostgreSQL chung và tự đưa vào hàng đợi của agent đang làm Main. Nếu agent tạm offline, việc nằm trong hàng đợi cho tới khi có agent hoạt động.</p><p class="small">Chỉ chọn được DM/nhóm đang được cấp quyền. Nếu quyền bị thu hồi trước giờ chạy, lịch tự tạm dừng để tránh gửi nhầm.</p></div></section></div>`
+    `<section class="card calendar-card"><div class="calendar-toolbar"><button data-calendar-shift="-1" aria-label="${calendarView === "day" ? "Ngày trước" : "Tháng trước"}">‹</button><h2>${escape(title)}</h2><button data-calendar-shift="1" aria-label="${calendarView === "day" ? "Ngày sau" : "Tháng sau"}">›</button><button data-calendar-today class="subtle">${calendarView === "day" ? "Hôm nay" : "Tháng này"}</button><div class="calendar-view-toggle" role="group" aria-label="Chế độ xem lịch"><button data-calendar-view="month" class="${calendarView === "month" ? "primary" : "subtle"}">Tháng</button><button data-calendar-view="day" class="${calendarView === "day" ? "primary" : "subtle"}">Ngày</button></div><span class="small muted">${jobs.filter((j) => j.enabled).length} lịch đang bật</span></div>${calendarContent}</section><div class="calendar-bottom"><section class="card"><div class="card-head"><h2>Sắp tới</h2><span class="badge">${upcoming.length}</span></div>${upcoming.length ? `<div class="calendar-upcoming">${upcoming.map((j) => `<button data-calendar-edit="${j.id}"><span class="calendar-date">${escape(new Date(j.next_run_at).toLocaleString("vi-VN", { timeZone: calendarZone, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }))}</span><span><strong>${escape(j.title)}</strong><small>${escape(j.target_name)} · ${j.recurrence === "once" ? "Một lần" : j.recurrence === "daily" ? "Hằng ngày" : "Hằng tuần"}</small></span>${badge(j.enabled ? "online" : "disconnected", j.enabled ? "Đang bật" : "Tạm dừng")}</button>`).join("")}</div>` : empty("Chưa có lịch hẹn", "Tạo lịch để giao việc hoặc nhắc bot vào một hội thoại Zalo.")}</section><section class="card"><div class="card-head"><h2>Nguyên tắc gửi lịch</h2></div><div class="card-body"><p class="small">Lịch được lưu trong PostgreSQL chung và tự đưa vào hàng đợi của agent đang làm Main. Nếu agent tạm offline, việc nằm trong hàng đợi cho tới khi có agent hoạt động.</p><p class="small">Chỉ chọn được DM/nhóm đang được cấp quyền. Nếu quyền bị thu hồi trước giờ chạy, lịch tự tạm dừng để tránh gửi nhầm.</p></div></section></div>`
   );
 }
 function calendarDialog(item, targets, dateKey = "") {
@@ -264,12 +297,52 @@ function calendarDialog(item, targets, dateKey = "") {
     if (d.getTime() < Date.now() + 60000) d.setTime(Date.now() + 3600000);
     d.setSeconds(0, 0);
   }
+  const startDate = localDateKey(d);
+  const runTimes = Array.isArray(item?.run_times) && item.run_times.length
+    ? item.run_times
+    : [localClock(d)];
   const targetValue = item ? `${item.thread_type}:${item.thread_id}` : "";
-  modal.innerHTML = `<div class="row spread"><div><div class="eyebrow">LỊCH · ZALO</div><h2>${item ? "Sửa lịch" : "Tạo lịch"}</h2></div><button type="button" data-close>Đóng</button></div><form id="calendar-form"><label>Tên lịch<input name="title" maxlength="120" required value="${escape(item?.title || "")}" placeholder="Ví dụ: Tổng hợp tin buổi sáng"></label><label>Bot cần làm gì?<textarea name="prompt" maxlength="2000" rows="4" required placeholder="Mô tả rõ việc cần làm hoặc nội dung cần nhắc">${escape(item?.prompt || "")}</textarea></label><label>Gửi kết quả vào<select name="target" required><option value="">Chọn DM hoặc nhóm được cấp quyền…</option>${targets.map((t) => `<option value="${t.threadType}:${t.uid}" ${targetValue === `${t.threadType}:${t.uid}` ? "selected" : ""}>${t.threadType === 1 ? "Nhóm" : "DM"} · ${escape(t.name)}</option>`).join("")}</select></label><div class="row calendar-form-row"><label>Ngày giờ (giờ Việt Nam)<input type="datetime-local" name="runAt" required value="${localDateTimeInput(d)}"></label><label>Lặp lại<select name="recurrence"><option value="once" ${item?.recurrence === "once" || !item ? "selected" : ""}>Một lần</option><option value="daily" ${item?.recurrence === "daily" ? "selected" : ""}>Hằng ngày</option><option value="weekly" ${item?.recurrence === "weekly" ? "selected" : ""}>Hằng tuần</option></select></label></div><p class="small muted">Nhóm dùng model riêng bảo mật; DM dùng Hermes/OpenClaw. Kết quả được phản hồi vào đúng hội thoại đã chọn.</p><div id="calendar-error" class="small red"></div><div class="modal-actions"><button type="button" data-close>Hủy</button>${item ? `<button type="button" id="calendar-toggle">${item.enabled ? "Tạm dừng" : "Bật lại"}</button><button type="button" class="danger" id="calendar-delete">Xóa lịch</button>` : ""}<button class="primary">${item ? "Lưu thay đổi" : "Tạo lịch"}</button></div></form>`;
+  modal.innerHTML = `<div class="row spread"><div><div class="eyebrow">LỊCH · ZALO</div><h2>${item ? "Sửa lịch" : "Tạo lịch"}</h2></div><button type="button" data-close>Đóng</button></div><form id="calendar-form"><label>Tên lịch<input name="title" maxlength="120" required value="${escape(item?.title || "")}" placeholder="Ví dụ: Tổng hợp tin buổi sáng"></label><label>Bot cần làm gì?<textarea name="prompt" maxlength="2000" rows="4" required placeholder="Mô tả rõ việc cần làm hoặc nội dung cần nhắc">${escape(item?.prompt || "")}</textarea></label><label>Gửi kết quả vào<select name="target" required><option value="">Chọn DM hoặc nhóm được cấp quyền…</option>${targets.map((t) => `<option value="${t.threadType}:${t.uid}" ${targetValue === `${t.threadType}:${t.uid}` ? "selected" : ""}>${t.threadType === 1 ? "Nhóm" : "DM"} · ${escape(t.name)}</option>`).join("")}</select></label><div class="row calendar-form-row"><label>Ngày bắt đầu (giờ Việt Nam)<input type="date" name="startDate" required value="${startDate}"></label><label>Lặp lại<select name="recurrence"><option value="once" ${item?.recurrence === "once" || !item ? "selected" : ""}>Một lần</option><option value="daily" ${item?.recurrence === "daily" ? "selected" : ""}>Hằng ngày</option><option value="weekly" ${item?.recurrence === "weekly" ? "selected" : ""}>Hằng tuần</option></select></label></div><fieldset class="calendar-times"><legend>Khung giờ chạy</legend><div id="calendar-time-list">${runTimes.map((time, index) => `<div class="calendar-time-row"><label>Giờ ${index + 1}<input type="time" name="runTime" required value="${escape(time)}"></label>${index ? '<button type="button" data-time-remove aria-label="Xóa khung giờ">−</button>' : ""}</div>`).join("")}</div><button type="button" class="subtle" data-time-add>＋ Thêm khung giờ</button><p class="small muted" data-time-help>Mỗi khung giờ sẽ tạo một lượt chạy. Ví dụ: 08:00 và 17:00.</p></fieldset><p class="small muted">Nhóm dùng model riêng bảo mật; DM dùng Hermes/OpenClaw. Kết quả được phản hồi vào đúng hội thoại đã chọn.</p><div id="calendar-error" class="small red"></div><div class="modal-actions"><button type="button" data-close>Hủy</button>${item ? `<button type="button" id="calendar-toggle">${item.enabled ? "Tạm dừng" : "Bật lại"}</button><button type="button" class="danger" id="calendar-delete">Xóa lịch</button>` : ""}<button class="primary">${item ? "Lưu thay đổi" : "Tạo lịch"}</button></div></form>`;
   if (!modal.open) modal.showModal();
   modal
     .querySelectorAll("[data-close]")
     .forEach((b) => (b.onclick = () => modal.close()));
+  const timeList = modal.querySelector("#calendar-time-list");
+  const recurrenceInput = modal.querySelector('[name="recurrence"]');
+  const syncTimeControls = () => {
+    const recurring = recurrenceInput.value !== "once";
+    modal.querySelector("[data-time-add]").hidden = !recurring;
+    modal.querySelector("[data-time-help]").textContent = recurring
+      ? "Mỗi khung giờ sẽ tạo một lượt chạy. Ví dụ: 08:00 và 17:00."
+      : "Lịch một lần chỉ chạy ở khung giờ đầu tiên.";
+    timeList.querySelectorAll("[data-time-remove]").forEach((button) => {
+      button.hidden = !recurring;
+    });
+    timeList.querySelectorAll(".calendar-time-row").forEach((row, index) => {
+      row.querySelector("label").firstChild.textContent = `Giờ ${index + 1}`;
+    });
+  };
+  recurrenceInput.addEventListener("change", syncTimeControls);
+  syncTimeControls();
+  modal.querySelector("[data-time-add]").addEventListener("click", () => {
+    const count = timeList.querySelectorAll(".calendar-time-row").length;
+    if (count >= 24) return toast("Một lịch tối đa 24 khung giờ.");
+    const row = document.createElement("div");
+    row.className = "calendar-time-row";
+    row.innerHTML = `<label>Giờ ${count + 1}<input type="time" name="runTime" required value="09:00"></label><button type="button" data-time-remove aria-label="Xóa khung giờ">−</button>`;
+    row.querySelector("[data-time-remove]").addEventListener("click", () => {
+      row.remove();
+      syncTimeControls();
+    });
+    timeList.append(row);
+    syncTimeControls();
+  });
+  timeList.querySelectorAll("[data-time-remove]").forEach((button) => {
+    button.addEventListener("click", () => {
+      button.closest(".calendar-time-row").remove();
+      syncTimeControls();
+    });
+  });
   modal.querySelector("#calendar-form").onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -279,7 +352,8 @@ function calendarDialog(item, targets, dateKey = "") {
       prompt: f.get("prompt"),
       threadId,
       threadType: Number(threadType),
-      runAt: f.get("runAt"),
+      runAt: `${f.get("startDate")}T${[...e.currentTarget.querySelectorAll('[name="runTime"]')][0].value}`,
+      runTimes: [...e.currentTarget.querySelectorAll('[name="runTime"]')].map((input) => input.value),
       recurrence: f.get("recurrence"),
     };
     const submit = e.currentTarget.querySelector("button.primary");
@@ -399,6 +473,12 @@ async function showChatSettings(target) {
     );
     modal.querySelector("#profile-guard-state").hidden = true;
   }
+  modal
+    .querySelector('[data-profile-section="connection"]')
+    ?.insertAdjacentHTML(
+      "beforeend",
+      '<p class="small muted">Đọc ảnh cần model có hỗ trợ hình ảnh (vision). Ảnh Zalo JPG, PNG, WebP hoặc GIF, tối đa 6 MB mỗi ảnh; nếu Agent/model hiện tại không hỗ trợ ảnh, Bot sẽ báo lỗi thay vì tự đoán.</p>',
+    );
 
   const noteInput = modal.querySelector("#profile-note");
   const noteAdd = modal.querySelector("#profile-add-note");
@@ -989,14 +1069,48 @@ function connections() {
     `<div class="connection-grid">${snapshot.agents.map((a) => `<section class="card"><div class="card-head"><div class="row"><div class="logo ${a.id}">${a.id === "hermes" ? "H" : "O"}</div><div><h2>${a.id === "hermes" ? "Hermes" : "OpenClaw"}</h2><p class="small">${a.id === "hermes" ? "Điều phối chính" : "Thực thi & dự phòng"}</p></div></div>${badge(a.health)}</div><div class="card-body"><p class="small">${a.id === "hermes" ? "Hiểu yêu cầu, sử dụng ngữ cảnh chung và giao nhiệm vụ cho OpenClaw khi cần." : "Nhận nhiệm vụ từ Hermes hoặc làm Main khi Hermes chưa kết nối / downtime."}</p><div class="detail"><span>API endpoint</span><span class="mono">${escape(a.base_url)}</span></div><div class="detail"><span>Agent target</span><span class="mono">${escape(a.model)}</span></div><div class="detail"><span>API key</span><span>${a.has_key ? "Đã lưu mã hóa" : "Chưa thiết lập"}</span></div>${a.last_run_ms != null ? `<div class="detail"><span>Lượt AI gần nhất</span><span>${(a.last_run_ms / 1000).toFixed(1)} giây</span></div>` : ""}${a.last_run_error ? `<div class="note warn">Lượt AI gần nhất bị lỗi: ${escape(a.last_run_error)}</div>` : ""}${a.error ? `<p class="small">${escape(a.error)}</p>` : ""}<p class="small muted">Online xác nhận kết nối API; khả năng trả lời còn phụ thuộc model/provider.</p></div><footer><button data-agent="${a.id}" class="primary">Cấu hình</button><button data-check="${a.id}" ${a.enabled ? "" : "disabled"}>Kiểm tra</button></footer></section>`).join("")}</div><div class="note">Các kênh Zalo và Telegram được quản lý riêng trong trang Zalo & Telegram.</div>`
   );
 }
+function toolsPage(data) {
+  const ready = data.tools.filter((tool) => tool.ready).length;
+  return heading(
+    "Công cụ Bot",
+    "Theo dõi năng lực đã tích hợp, trạng thái sẵn sàng và quyền sử dụng trong xử lý tin nhắn.",
+    `<span class="badge green">${ready}/${data.tools.length} sẵn sàng</span>`,
+  ) + `<div class="note">Tắt công cụ sẽ chặn Bot sử dụng năng lực đó trong các lượt xử lý mới. Trạng thái sẵn sàng phụ thuộc kết nối Agent/Zalo và được cập nhật khi tải trang.</div><section class="card tools-card"><div class="tools-list">${data.tools.map((tool) => `<article class="tool-row"><div class="tool-icon">${icon("tools")}</div><div class="tool-info"><div class="row"><h2>${escape(tool.name)}</h2><span class="badge">${escape(tool.category)}</span>${badge(tool.ready ? "online" : "offline", tool.ready ? "Sẵn sàng" : "Chưa sẵn sàng")}</div><p class="small">${escape(tool.description)}</p><p class="small ${tool.ready ? "muted" : "amber-text"}">${escape(tool.readyReason)}</p></div><label class="tool-toggle"><span>${tool.enabled ? "Đang bật" : "Đang tắt"}</span><input type="checkbox" data-tool-toggle="${escape(tool.id)}" ${tool.enabled ? "checked" : ""} aria-label="${tool.enabled ? "Tắt" : "Bật"} ${escape(tool.name)}"><i></i></label></article>`).join("")}</div></section><section class="card tools-integrations"><div class="card-head"><h2>Kết nối nền tảng</h2><a href="#connections" class="small">Quản lý Agents →</a><a href="#channels" class="small">Quản lý kênh →</a></div><div class="card-body">${[["Hermes", data.integrations.hermes, data.integrations.hermes?.enabled ? labels[data.integrations.hermes.health] || data.integrations.hermes.health : "Đang tắt"], ["OpenClaw", data.integrations.openclaw, data.integrations.openclaw?.enabled ? labels[data.integrations.openclaw.health] || data.integrations.openclaw.health : "Đang tắt"], ["Zalo", data.integrations.zalo, labels[data.integrations.zalo.status] || data.integrations.zalo.status], ["Telegram", data.integrations.telegram, data.integrations.telegram.status === "connected" ? "Đang hoạt động" : data.integrations.telegram.status || "Chưa kết nối"]].map(([name, integration, label]) => `<div class="health-row"><strong>${name}</strong>${badge(integration?.health || integration?.status || "unconfigured", label)}</div>`).join("")}<p class="small muted">Hub chưa tích hợp công cụ tìm kiếm web riêng. Khả năng tìm web phụ thuộc công cụ/provider của Agent đang kết nối và không được xác nhận chỉ từ trạng thái online.</p></div></section>`;
+}
+let relayRequestPending=0;
+async function relayApi(...args){relayRequestPending++;try{return await api(...args);}finally{relayRequestPending--;}}
+let relayData={bridges:[],zaloGroups:[],telegramGroups:[],runtime:{}};
+let networkData={connections:[],members:[],contacts:[],stats:[]};
+const relayDirections={both:'Hai chiều',zalo_to_telegram:'Zalo → Telegram',telegram_to_zalo:'Telegram → Zalo'};
+function relayPanel(){const d=relayData;return `<section class="card relay-panel" id="channel-bridge-panel"><div class="card-head"><div><h2>Bridge Zalo ↔ Telegram</h2><p class="small">Chuyển tin người gửi giữa hai nhóm, không cần AI xử lý.</p></div><button data-relay-refresh>Làm mới nhóm</button></div><div class="card-body"><ol class="small relay-guide"><li>Tạo nhóm Zalo, thêm tài khoản bot, cấp quyền nhóm tại bảng bên dưới và chọn Khi được tag hoặc Luôn trả lời. Bridge chuyển mọi tin người gửi; AI vẫn theo cấu hình trả lời riêng.</li><li>Tạo nhóm Telegram và thêm ${snapshot.telegram?.botUsername?'@'+escape(snapshot.telegram.botUsername):'bot Telegram'}. Để bot nhận mọi tin, đặt bot làm quản trị viên nhóm hoặc tắt Group Privacy trong BotFather. Gửi <code>/bridge${snapshot.telegram?.botUsername?'@'+escape(snapshot.telegram.botUsername):''}</code> trong nhóm để nhóm xuất hiện.</li><li>Chọn hai nhóm, tạo cầu nối tạm dừng, rồi bấm Bật. Chỉ tin mới từ thời điểm bật được chuyển. Bot không tạo nhóm hay tự thêm thành viên.</li></ol><p class="small">Văn bản, link, ảnh và file tối đa 20 MB/tệp. Tin hiện tên người gửi và kênh nguồn. Tin của bot không chuyển vòng; ảnh/file chỉ được chuyển tiếp, không đưa vào AI. Khi đang gửi mà mất xác nhận, Bridge báo Cần đối soát và không tự gửi lặp.</p><form id="channel-bridge-form" class="relay-form"><label>Tên cầu nối<input name="name" required maxlength="100" placeholder="Zalo - Tele ↔ Tele - Zalo"></label><label>Nhóm Zalo<select name="zaloGroupId" required><option value="">Chọn nhóm trên tài khoản đang kết nối…</option>${d.zaloGroups.map(g=>`<option value="${escape(g.group_id)}">${escape(g.display_name||g.group_id)} · ${escape(g.group_id)}</option>`).join('')}</select></label><label>Phòng chat Telegram (nhóm)<select name="telegramChatId" id="relay-telegram-group"><option value="">Chọn nhóm đã nhận diện…</option>${d.telegramGroups.map(g=>`<option value="${escape(g.chat_id)}">${escape(g.title)} · ${escape(g.chat_id)}</option>`).join('')}</select></label><label>Hoặc nhập Telegram Group ID<input id="relay-telegram-manual" placeholder="-100…" inputmode="numeric"></label><div class="row"><button type="button" id="relay-check-telegram">Kiểm tra nhóm Telegram</button><span id="relay-group-check" class="small" role="status"></span></div><label>Chiều chuyển<select name="direction">${Object.entries(relayDirections).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></label><label class="check"><input type="checkbox" name="media" checked>Chuyển cả ảnh và file (tối đa 20 MB/tệp)</label><p id="relay-form-error" class="small red" role="status"></p><button class="primary" ${!d.runtime.zaloAccountId||!d.runtime.telegramBotId?'disabled':''}>Tạo cầu nối (tạm dừng)</button></form></div><div class="table-wrap"><table><thead><tr><th>Cầu nối / nhóm</th><th>Chế độ</th><th>Hàng đợi</th><th>Điều khiển</th></tr></thead><tbody>${d.bridges.length?d.bridges.map(b=>`<tr><td><strong>${escape(b.name)}</strong><small class="relay-endpoints">Zalo: ${escape(b.zalo_name||b.zalo_group_id)}<br>Telegram: ${escape(b.telegram_name||b.telegram_chat_id)}</small></td><td>${badge(b.enabled?'online':'disconnected',b.enabled?'Đang bật':'Tạm dừng')}<small class="relay-endpoints">${relayDirections[b.direction]} · ${b.media?'Văn bản, ảnh, file':'Chỉ văn bản'}</small></td><td>${b.pending} chờ · ${b.sent} đã chuyển${b.attention?`<br><span class="red">${b.attention} cần kiểm tra</span>`:''}</td><td><div class="row relay-actions"><button data-relay-toggle="${b.id}" data-enabled="${!b.enabled}" class="${b.enabled?'':'primary'}">${b.enabled?'Tạm dừng':'Bật'}</button><button data-relay-edit="${b.id}">Sửa</button><button data-relay-history="${b.id}">Nhật ký</button><button data-relay-delete="${b.id}" class="danger">Xóa</button></div></td></tr>`).join(''):'<tr><td colspan="4">Chưa có cầu nối. Chọn hai nhóm để bắt đầu cấu hình.</td></tr>'}</tbody></table></div></section>`;}
+function bindRelay(){
+ document.querySelector('[data-relay-refresh]')?.addEventListener('click',()=>void render());
+ const form=document.querySelector('#channel-bridge-form');form?.addEventListener('change',()=>{form.dataset.dirty='true';});
+ form?.addEventListener('submit',async e=>{e.preventDefault();const button=form.querySelector('button.primary');button.disabled=true;try{const f=new FormData(form),telegramChatId=document.querySelector('#relay-telegram-manual').value.trim()||f.get('telegramChatId');if(!telegramChatId)throw new Error('Anh chọn hoặc nhập ID nhóm Telegram.');await relayApi('/channel-bridges',{method:'POST',body:{name:f.get('name'),zaloGroupId:f.get('zaloGroupId'),telegramChatId,direction:f.get('direction'),media:f.has('media')}});toast('Đã tạo cầu nối tạm dừng. Bấm Bật khi hai nhóm đã sẵn sàng.');await render();}catch(error){document.querySelector('#relay-form-error').textContent=error.message;toast(error.message);}finally{button.disabled=false;}});
+ document.querySelector('#relay-check-telegram')?.addEventListener('click',async e=>{const button=e.currentTarget,status=document.querySelector('#relay-group-check');button.disabled=true;status.textContent='Đang kiểm tra quyền…';try{const chatId=document.querySelector('#relay-telegram-manual').value.trim()||document.querySelector('#relay-telegram-group').value;if(!chatId)throw new Error('Anh chọn hoặc nhập ID nhóm trước.');const r=await relayApi('/channel-bridges/telegram-group/check',{method:'POST',body:{chatId}});const select=document.querySelector('#relay-telegram-group');if(![...select.options].some(o=>o.value===r.chatId))select.add(new Option(r.title+' · '+r.chatId,r.chatId));select.value=r.chatId;document.querySelector('#relay-telegram-manual').value='';status.textContent=`${r.title}: ${r.member?'bot đã tham gia':'bot chưa tham gia'}; ${r.canReadAll?'có quyền nhận mọi tin':'cần quyền admin hoặc tắt Group Privacy'}; ${r.canSendMedia?'gửi được ảnh/file':'chưa đủ quyền gửi ảnh/file'}. Chưa gửi tin thử.`;}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});
+ document.querySelectorAll('[data-relay-toggle]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await relayApi('/channel-bridges/'+b.dataset.relayToggle,{method:'PATCH',body:{enabled:b.dataset.enabled==='true'}});toast(b.dataset.enabled==='true'?'Đã bật cầu nối cho tin mới.':'Đã tạm dừng cầu nối.');await render();}catch(error){toast(error.message);}finally{b.disabled=false;}});
+ document.querySelectorAll('[data-relay-delete]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await relayApi('/channel-bridges/'+b.dataset.relayDelete,{method:'DELETE'});await render();}catch(error){toast(error.message);b.disabled=false;}});
+ document.querySelectorAll('[data-relay-edit]').forEach(b=>b.onclick=()=>{const r=relayData.bridges.find(x=>x.id===b.dataset.relayEdit);if(!r)return;modal.innerHTML=`<div class="row spread"><h2>Sửa cầu nối</h2><button data-close>Đóng</button></div><form id="relay-edit-form"><label>Tên<input name="name" required maxlength="100" value="${escape(r.name)}"></label><label>Chiều chuyển<select name="direction">${Object.entries(relayDirections).map(([v,l])=>`<option value="${v}" ${r.direction===v?'selected':''}>${l}</option>`).join('')}</select></label><label class="check"><input type="checkbox" name="media" ${r.media?'checked':''}>Chuyển ảnh và file</label><p class="small">Để đổi nhóm, anh xóa cầu nối rồi tạo cặp mới. Thay chiều/loại tin sẽ hủy hàng đợi cũ và chỉ áp dụng tin mới.</p><p class="small red" id="relay-edit-error"></p><button class="primary">Lưu</button></form>`;modal.showModal();modal.querySelector('[data-close]').onclick=()=>modal.close();modal.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await relayApi('/channel-bridges/'+r.id,{method:'PATCH',body:{name:f.get('name'),direction:f.get('direction'),media:f.has('media')}});modal.close();await render();}catch(error){modal.querySelector('#relay-edit-error').textContent=error.message;}};});
+ document.querySelectorAll('[data-relay-history]').forEach(b=>b.onclick=async()=>{try{const rows=await relayApi('/channel-bridges/'+b.dataset.relayHistory+'/history');modal.innerHTML=`<div class="row spread"><h2>Nhật ký Bridge</h2><button data-close>Đóng</button></div><p class="small">Nội dung tin/file không hiện trong nhật ký này. Cần đối soát nghĩa là chưa chắc kênh đích đã nhận; không tự gửi lại.</p><div class="table-wrap"><table><thead><tr><th>Lúc</th><th>Nguồn / loại</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${when(r.created_at)}</td><td>${escape(r.source_platform)} · ${escape(r.kind)}</td><td>${badge(r.status)}</td><td>${escape(r.error||'')}${r.receipts?.length?'<br>ID đích: '+escape(r.receipts.join(', ')):''}</td></tr>`).join('')||'<tr><td colspan="4">Chưa có tin đi qua cầu nối.</td></tr>'}</tbody></table></div>`;modal.showModal();modal.querySelector('[data-close]').onclick=()=>modal.close();}catch(error){toast(error.message);}});
+}
+
+
+function teamsBridgePanel() {
+  const teams = networkData.connections.find((connection) => connection.platform === "teams_personal") || {};
+  const state = networkData.teamsState || {};
+  const members = networkData.members.filter((member) => member.platform === "teams_personal");
+  return `<section class="card relay-panel teams-bridge-panel"><div class="card-head"><div><h2>Teams Personal · Local Bridge</h2><p class="small">Kết nối Teams trong Brave VPS qua SSH tunnel loopback; Dashboard và Bridge vẫn chạy local.</p></div><div class="row"><button type="button" data-teams-refresh>Kiểm tra trạng thái</button><button type="button" data-teams-attach class="primary">Kết nối Brave</button></div></div><div class="card-body"><div class="note">Trên VPS, bật Remote Debugging trong Brave. Tạo SSH tunnel để chuyển cổng CDP về local rồi đặt <code>TEAMS_CDP_ENDPOINT=http://127.0.0.1:9222</code> trong <code>.env</code>; khởi động lại Hub. Không mở cổng CDP ra Internet. Với máy đang dùng, lệnh tunnel có dạng <code>ssh -N -L 127.0.0.1:9222:127.0.0.1:&lt;CDP_PORT&gt; ubuntu@&lt;VPS_HOST&gt;</code>.</div><div class="detail"><span>Phiên Brave</span><span>${badge(state.open && !state.error ? "online" : "disconnected", state.open ? (state.error || "Đã attach") : "Chưa attach")}</span></div><div class="detail"><span>Tài khoản Teams</span><span>${escape(state.accountId || teams.accountId || "Chưa xác nhận")}</span></div><div class="detail"><span>Đang mở</span><span>${escape(state.title || "Chưa chọn cuộc trò chuyện")}${state.chatId ? ` · <code>${escape(state.chatId)}</code>` : ""}</span></div>${state.error || teams.error ? `<p class="small red">${escape(state.error || teams.error)}</p>` : ""}<form id="teams-connection-form" class="teams-connect-form"><label>Tên hiển thị tài khoản Teams<input name="selfName" required maxlength="100" value="${escape(teams.selfName || state.selfName || "")}" placeholder="Tên tài khoản vận hành trên Teams"></label><button class="primary">Lưu kết nối Teams</button><button type="button" data-teams-console>Mở Teams / đăng nhập</button></form><p class="small muted">Chỉ bật nhận/gửi văn bản sau khi xác nhận đúng tài khoản và đúng chat. Teams Personal chưa hỗ trợ ảnh hoặc file.</p></div><div class="card-body teams-member-setup"><h3>Thêm Teams vào phòng Zalo–Telegram</h3><form id="teams-member-form" class="teams-member-form"><label>Phòng Bridge<select name="bridgeId" required><option value="">Chọn phòng đang có…</option>${relayData.bridges.map((room) => `<option value="${room.id}">${escape(room.name)} · ${escape(room.zalo_name || room.zalo_group_id)} ↔ ${escape(room.telegram_name || room.telegram_chat_id)}</option>`).join("")}</select></label><label>Tên chat Teams<input name="title" required maxlength="100" placeholder="Tên hiển thị chính xác của nhóm Teams"></label><label>URL chat Teams<input name="chatId" type="url" required placeholder="https://teams.live.com/v2/?chatId=..."></label><div class="row"><label class="check"><input type="checkbox" name="receive" checked>Teams → Zalo/Telegram</label><label class="check"><input type="checkbox" name="send" checked>Zalo/Telegram → Teams</label></div><p class="small">Thành viên mới được thêm ở trạng thái tạm dừng. Bật sau khi tài khoản, URL và tiêu đề chat đã được xác nhận. Không bật ảnh/file.</p><button class="primary" ${!teams.configured || !relayData.bridges.length ? "disabled" : ""}>＋ Thêm Teams vào phòng</button><p id="teams-member-error" class="small red"></p></form><div class="table-wrap"><table><thead><tr><th>Phòng / Teams chat</th><th>Chiều</th><th>Trạng thái</th><th>Điều khiển</th></tr></thead><tbody>${members.length ? members.map((member) => { const room = relayData.bridges.find((item) => item.id === member.bridge_id); return `<tr><td><strong>${escape(room?.name || "Phòng đã gỡ")}</strong><small class="relay-endpoints">${escape(member.title)}<br>${escape(member.chat_id)}</small></td><td>${member.receive ? "Teams → phòng" : ""}${member.receive && member.send ? " · " : ""}${member.send ? "Phòng → Teams" : ""}</td><td>${badge(member.enabled ? "online" : "disconnected", member.enabled ? "Đang bật" : "Tạm dừng")}${member.error ? `<p class="small red">${escape(member.error)}</p>` : ""}</td><td><div class="row"><button data-teams-member-toggle="${member.id}" data-enable="${!member.enabled}">${member.enabled ? "Tạm dừng" : "Kiểm tra & bật"}</button><button class="danger" data-teams-member-remove="${member.id}">Gỡ</button></div></td></tr>`; }).join("") : `<tr><td colspan="4">Chưa có Teams chat trong các phòng.</td></tr>`}</tbody></table></div></div></section>`;
+}
 function channels() {
   return (
     heading(
-      "Zalo & Telegram",
-      "Quản lý tài khoản Zalo, quyền hội thoại và bot Telegram nhận cảnh báo.",
+      "Kênh & Bridge",
+      "Quản lý Zalo, Telegram, Teams Personal và các phòng liên thông.",
       '<button data-dm-jump class="primary">Quản lý quyền chat →</button>',
     ) +
-    `<div class="connection-grid"><section class="card"><div class="card-head"><div class="row"><div class="logo zalo">Z</div><div><h2>Zalo cá nhân</h2><p class="small">Kênh hội thoại</p></div></div>${badge(snapshot.zalo.status)}</div><div class="card-body"><p class="small">Đăng nhập bằng mã QR để bot nhận và phản hồi tin nhắn trên một tài khoản Zalo.</p><div class="detail"><span>Tài khoản</span><span>${escape(snapshot.zalo.accountId || "Chưa đăng nhập")}</span></div><div class="detail"><span>Thư viện</span><span>zca-js</span></div><div class="detail"><span>Truy cập</span><span>Danh sách cho phép</span></div>${snapshot.zalo.error ? `<p class="small">${escape(snapshot.zalo.error)}</p>` : ""}</div><footer><button data-zalo class="primary">${snapshot.zalo.status === "connected" ? "Quản lý Zalo" : "Kết nối Zalo"}</button><button data-policy>Phân quyền</button></footer></section><section class="card"><div class="card-head"><div class="row"><div class="logo telegram">T</div><div><h2>Telegram</h2><p class="small">Cảnh báo sự cố</p></div></div>${badge(snapshot.telegram?.status || "disconnected")}</div><div class="card-body"><p class="small">Kết nối bot riêng do @BotFather tạo để nhận cảnh báo khi Zalo hoặc Agents mất kết nối.</p><div class="detail"><span>Bot</span><span>${snapshot.telegram?.botUsername ? "@" + escape(snapshot.telegram.botUsername) : "Chưa cấu hình"}</span></div><div class="detail"><span>Tài khoản nhận</span><span>${snapshot.telegram?.linked ? escape(snapshot.telegram.chatName || "Đã liên kết") : "Chưa liên kết"}</span></div><div class="detail"><span>Token</span><span>${snapshot.telegram?.tokenMasked ? escape(snapshot.telegram.tokenMasked) : "Chưa lưu"}</span></div>${snapshot.telegram?.lastError ? `<p class="small red">${escape(snapshot.telegram.lastError)}</p>` : ""}</div><footer><button data-telegram class="primary">${snapshot.telegram?.tokenMasked ? "Cấu hình bot" : "Kết nối bot"}</button><button data-telegram-link ${!snapshot.telegram?.tokenMasked || snapshot.telegram?.linked ? "disabled" : ""}>${snapshot.telegram?.linked ? "Đã nối người nhận" : "Nối người nhận"}</button><button data-telegram-test ${!snapshot.telegram?.linked ? "disabled" : ""}>Gửi tin thử</button></footer></section></div><div class="note warn">Telegram nhận cảnh báo sự cố của Zalo và Agents. Hội thoại người dùng với Agents vẫn được xử lý trên Zalo.</div>` +
+    `<div class="connection-grid"><section class="card"><div class="card-head"><div class="row"><div class="logo zalo">Z</div><div><h2>Zalo cá nhân</h2><p class="small">Kênh hội thoại</p></div></div>${badge(snapshot.zalo.status)}</div><div class="card-body"><p class="small">Đăng nhập bằng mã QR để bot nhận và phản hồi tin nhắn trên một tài khoản Zalo.</p><div class="detail"><span>Tài khoản</span><span>${escape(snapshot.zalo.accountId || "Chưa đăng nhập")}</span></div><div class="detail"><span>Thư viện</span><span>zca-js</span></div><div class="detail"><span>Truy cập</span><span>Danh sách cho phép</span></div>${snapshot.zalo.error ? `<p class="small">${escape(snapshot.zalo.error)}</p>` : ""}</div><footer><button data-zalo class="primary">${snapshot.zalo.status === "connected" ? "Quản lý Zalo" : "Kết nối Zalo"}</button><button data-policy>Phân quyền</button></footer></section><section class="card"><div class="card-head"><div class="row"><div class="logo telegram">T</div><div><h2>Telegram</h2><p class="small">Cảnh báo & Bridge</p></div></div>${badge(snapshot.telegram?.status || "disconnected")}</div><div class="card-body"><p class="small">Kết nối bot riêng do @BotFather tạo để nhận cảnh báo và chuyển tiếp tin giữa các nhóm đã ghép.</p><div class="detail"><span>Bot</span><span>${snapshot.telegram?.botUsername ? "@" + escape(snapshot.telegram.botUsername) : "Chưa cấu hình"}</span></div><div class="detail"><span>Tài khoản nhận</span><span>${snapshot.telegram?.linked ? escape(snapshot.telegram.chatName || "Đã liên kết") : "Chưa liên kết"}</span></div><div class="detail"><span>Token</span><span>${snapshot.telegram?.tokenMasked ? escape(snapshot.telegram.tokenMasked) : "Chưa lưu"}</span></div>${snapshot.telegram?.lastError ? `<p class="small red">${escape(snapshot.telegram.lastError)}</p>` : ""}</div><footer><button data-telegram class="primary">${snapshot.telegram?.tokenMasked ? "Cấu hình bot" : "Kết nối bot"}</button><button data-telegram-link ${!snapshot.telegram?.tokenMasked || snapshot.telegram?.linked ? "disabled" : ""}>${snapshot.telegram?.linked ? "Đã nối người nhận" : "Nối người nhận"}</button><button data-telegram-test ${!snapshot.telegram?.linked ? "disabled" : ""}>Gửi tin thử</button></footer></section></div><div class="note warn">Trong Telegram, bot cần được cấp quyền nhận tin thường trong nhóm. Hướng dẫn bật Privacy Mode nằm ở mục Bridge bên dưới.</div>` +
+    relayPanel() +
+    teamsBridgePanel() +
     dmContactsPanel() +
     zaloRecoveryPanel() +
     zaloDiagnostics()
@@ -1207,23 +1321,29 @@ setInterval(async () => {
 }, 1000);
 async function showPolicy() {
   const { policy } = await api("/zalo");
-  modal.innerHTML = `<h2>Quyền truy cập Zalo</h2><p class="small">Cấu hình chỉ áp dụng cho tài khoản Zalo đang kết nối. Các UID trong danh sách vừa được phép DM, vừa được nhận diện là Bot Owner. Yêu cầu rõ ràng từ Owner được thực hiện ngay; nếu thiếu đối tượng, nội dung hoặc phạm vi, bot sẽ hỏi phần còn thiếu. Owner vẫn tuân theo quyền nhóm, quyền công cụ và guard hệ thống. Nhập UID chính xác, phân tách bằng dấu phẩy. Để trống nghĩa là không cấp quyền DM/Owner cho ai.</p>${policy.legacyPolicyAvailable ? '<div class="note warn">Có cấu hình quyền cũ đang được giữ lại. Nạp vào biểu mẫu để rà soát; quyền chỉ được chuyển sang tài khoản này sau khi anh bấm Lưu.</div><button type="button" id="load-legacy-policy">Nạp quyền cũ để rà soát</button>' : ""}<form><label>UID Bot Owner / người dùng được phép<textarea name="users" placeholder="123456789, 987654321">${escape(policy.allowUsers.join(", "))}</textarea></label><label class="check"><input type="checkbox" name="groups" ${policy.groupsEnabled ? "checked" : ""}>Cho phép bot xử lý tin trong nhóm đã chọn</label><label>ID nhóm được phép<textarea name="groupIds">${escape(policy.allowGroups.join(", "))}</textarea></label><p class="small">Nhóm mới được đặt mặc định là “Tag mới trả lời”. Chỉ bật phản hồi nhóm sau khi đã rà soát đúng ID nhóm.</p><div class="modal-actions"><button type="button" data-close>Hủy</button><button class="primary">Lưu phân quyền</button></div></form>`;
+  modal.innerHTML = `<h2>Quyền truy cập Zalo</h2><p class="small">Cấu hình chỉ áp dụng cho tài khoản Zalo đang kết nối. Các UID trong danh sách vừa được phép DM, vừa được nhận diện là Bot Owner. Yêu cầu rõ ràng từ Owner được thực hiện ngay; nếu thiếu đối tượng, nội dung hoặc phạm vi, bot sẽ hỏi phần còn thiếu. Owner vẫn tuân theo quyền nhóm, quyền công cụ và guard hệ thống. Nhập UID chính xác, phân tách bằng dấu phẩy. Để trống nghĩa là không cấp quyền DM/Owner cho ai.</p>${policy.legacyPolicyAvailable ? '<div class="note warn">Có cấu hình quyền cũ đang được giữ lại. Nạp vào biểu mẫu để rà soát; quyền chỉ được chuyển sang tài khoản này sau khi anh bấm Lưu.</div><button type="button" id="load-legacy-policy">Nạp quyền cũ để rà soát</button>' : ""}<form><label>UID Bot Owner / người dùng được phép<textarea name="users" placeholder="123456789, 987654321">${escape(policy.allowUsers.join(", "))}</textarea></label><label class="check"><input type="checkbox" name="groups" ${policy.groupsEnabled ? "checked" : ""}>Cho phép bot xử lý tin trong nhóm đã chọn</label><label>ID nhóm được phép<textarea name="groupIds">${escape(policy.allowGroups.join(", "))}</textarea></label><p class="small">Nhóm mới được đặt mặc định là “Tag mới trả lời”. Chỉ bật phản hồi nhóm sau khi đã rà soát đúng ID nhóm. Owner có thể tạo bình chọn bằng lệnh “Tạo poll: Câu hỏi? | Lựa chọn 1 | Lựa chọn 2”; trong DM, thêm “nhóm &lt;ID&gt;”. Poll được tạo ngay khi đủ dữ liệu và nhóm đã cấp quyền.</p><div class="modal-actions"><button type="button" data-close>Hủy</button><button class="primary">Lưu phân quyền</button></div></form>`;
   modal.showModal();
   modal.querySelector("[data-close]").onclick = () => modal.close();
-  modal.querySelector("#load-legacy-policy")?.addEventListener("click", async (e) => {
-    const button = e.currentTarget;
-    button.disabled = true;
-    try {
-      const legacy = await api("/zalo/policy/legacy");
-      modal.querySelector('[name="users"]').value = legacy.allowUsers.join(", ");
-      modal.querySelector('[name="groupIds"]').value = legacy.allowGroups.join(", ");
-      modal.querySelector('[name="groups"]').checked = legacy.groupsEnabled;
-      toast("Đã nạp vào biểu mẫu. Rà soát ID rồi bấm Lưu để áp dụng cho tài khoản này.");
-    } catch (err) {
-      toast(err.message);
-      button.disabled = false;
-    }
-  });
+  modal
+    .querySelector("#load-legacy-policy")
+    ?.addEventListener("click", async (e) => {
+      const button = e.currentTarget;
+      button.disabled = true;
+      try {
+        const legacy = await api("/zalo/policy/legacy");
+        modal.querySelector('[name="users"]').value =
+          legacy.allowUsers.join(", ");
+        modal.querySelector('[name="groupIds"]').value =
+          legacy.allowGroups.join(", ");
+        modal.querySelector('[name="groups"]').checked = legacy.groupsEnabled;
+        toast(
+          "Đã nạp vào biểu mẫu. Rà soát ID rồi bấm Lưu để áp dụng cho tài khoản này.",
+        );
+      } catch (err) {
+        toast(err.message);
+        button.disabled = false;
+      }
+    });
   modal.querySelector("form").onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target),
@@ -1274,7 +1394,7 @@ async function updateMessages() {
     messages
       .map(
         (m) =>
-          `<div class="message ${m.role === "user" ? "user" : ""}"><small>${escape(m.role === "user" ? "Anh" : m.agent || "Hệ thống")} · ${when(m.created_at)}</small>${escape(m.content)}</div>`,
+          `<div class="message ${m.role === "user" ? "user" : ""}"><small>${escape(m.role === "user" ? "Anh" : m.agent || "Hệ thống")} · ${when(m.created_at)}</small>${escape(m.content)}${(m.artifacts || []).map((f) => `<p><a href="/api/artifacts/${encodeURIComponent(f.id)}">⬇ ${escape(f.filename)} (${(Number(f.size) / 1024).toFixed(0)} KB)</a></p>`).join("")}</div>`,
       )
       .join("") || empty("Chưa có tin nhắn");
   el.scrollTop = el.scrollHeight;
@@ -1376,8 +1496,179 @@ async function showTask(id) {
   modal.showModal();
   modal.querySelector("[data-close]").onclick = () => modal.close();
 }
+function bindTeamsBridge() {
+  document.querySelector("[data-teams-refresh]")?.addEventListener("click", async (event) => {
+    event.currentTarget.disabled = true;
+    try {
+      networkData.teamsState = await api("/bridge-network/teams/state");
+      await render();
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      event.currentTarget.disabled = false;
+    }
+  });
+  document.querySelector("[data-teams-attach]")?.addEventListener("click", async (event) => {
+    event.currentTarget.disabled = true;
+    try {
+      networkData.teamsState = await api("/bridge-network/teams/attach-brave", { method: "POST" });
+      toast("Đã attach phiên Brave. Kiểm tra tài khoản và chat đang mở.");
+      await render();
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      event.currentTarget.disabled = false;
+    }
+  });
+  document.querySelector("#teams-connection-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = form.querySelector("button.primary");
+    submit.disabled = true;
+    try {
+      const selfName = new FormData(form).get("selfName");
+      await api("/bridge-network/connections/teams_personal", {
+        method: "PUT",
+        body: { transport: "vps_brave", selfName },
+      });
+      toast("Đã lưu tài khoản Teams Personal.");
+      await render();
+    } catch (error) {
+      toast(error.message);
+      submit.disabled = false;
+    }
+  });
+  document.querySelector("[data-teams-console]")?.addEventListener("click", () => void openTeamsConsole());
+  document.querySelector("#teams-member-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = form.querySelector("button.primary");
+    submit.disabled = true;
+    form.querySelector("#teams-member-error").textContent = "";
+    try {
+      const values = new FormData(form);
+      await api(`/bridge-network/rooms/${values.get("bridgeId")}/members`, {
+        method: "POST",
+        body: {
+          platform: "teams_personal",
+          chatId: values.get("chatId"),
+          title: values.get("title"),
+          receive: values.has("receive"),
+          send: values.has("send"),
+          images: false,
+          files: false,
+        },
+      });
+      toast("Đã thêm Teams ở trạng thái tạm dừng; kiểm tra rồi bật kênh.");
+      await render();
+    } catch (error) {
+      form.querySelector("#teams-member-error").textContent = error.message;
+      submit.disabled = false;
+    }
+  });
+  document.querySelectorAll("[data-teams-member-toggle]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        await api(`/bridge-network/members/${button.dataset.teamsMemberToggle}`, {
+          method: "PATCH",
+          body: { enabled: button.dataset.enable === "true" },
+        });
+        toast(button.dataset.enable === "true" ? "Đã kiểm tra và bật Teams." : "Đã tạm dừng Teams.");
+        await render();
+      } catch (error) {
+        toast(error.message);
+        button.disabled = false;
+      }
+    });
+  });
+  document.querySelectorAll("[data-teams-member-remove]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!confirm("Gỡ Teams chat này khỏi phòng Bridge?")) return;
+      button.disabled = true;
+      try {
+        await api(`/bridge-network/members/${button.dataset.teamsMemberRemove}`, { method: "DELETE" });
+        await render();
+      } catch (error) {
+        toast(error.message);
+        button.disabled = false;
+      }
+    });
+  });
+  document.querySelectorAll("[data-teams-history]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const rows = await api(`/bridge-network/rooms/${button.dataset.teamsHistory}/history`);
+        modal.innerHTML = `<div class="row spread"><h2>Nhật ký Bridge theo từng kênh</h2><button data-close>Đóng</button></div><p class="small">Lượt ở trạng thái review cần được đối soát trước khi thử lại.</p><div class="table-wrap"><table><thead><tr><th>Thời điểm</th><th>Nguồn → đích</th><th>Trạng thái</th><th>Receipt / lỗi</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${when(row.created_at)}</td><td>${escape(row.source_platform)} → ${escape(row.target_platform)}</td><td>${badge(row.status)}</td><td>${escape(row.error || "")}${row.receipts?.length ? `<br>ID: ${escape(row.receipts.join(", "))}` : ""}</td></tr>`).join("") || `<tr><td colspan="4">Chưa có lượt chuyển.</td></tr>`}</tbody></table></div>`;
+        modal.showModal();
+        modal.querySelector("[data-close]").onclick = () => modal.close();
+      } catch (error) {
+        toast(error.message);
+      }
+    });
+  });
+}
+async function openTeamsConsole() {
+  modal.innerHTML = `<div class="row spread"><h2>Teams Personal trong Brave VPS</h2><button data-close>Đóng</button></div><p class="small">Dùng ảnh chụp để đăng nhập/MFA hoặc mở nhóm Teams. Nội dung nhập vào đây được gửi trực tiếp tới trình duyệt Teams; Hub không lưu mật khẩu.</p><div class="row"><button id="teams-console-refresh">Chụp lại</button><button data-teams-key="Tab">Tab</button><button data-teams-key="Enter">Enter</button><button data-teams-key="Escape">Esc</button></div><p id="teams-console-url" class="small relay-endpoints"></p><img id="teams-console-screen" class="teams-screen" alt="Ảnh màn hình Brave Teams"><form id="teams-console-text"><label>Nhập vào ô đang chọn<input name="text" type="password" autocomplete="off" maxlength="4000"></label><button>Nhập</button></form><form id="teams-console-nav"><label>Mở chat Teams URL<input name="url" type="url" required placeholder="https://teams.live.com/v2/?chatId=..."></label><button>Mở</button></form>`;
+  modal.showModal();
+  modal.querySelector("[data-close]").onclick = () => modal.close();
+  const image = modal.querySelector("#teams-console-screen");
+  const refresh = async () => {
+    const screen = await api("/bridge-network/teams/screen");
+    if (!modal.open) return;
+    image.src = screen.image;
+    modal.querySelector("#teams-console-url").textContent = screen.url;
+  };
+  const action = async (body) => {
+    await api("/bridge-network/teams/action", { method: "POST", body });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await refresh();
+  };
+  modal.querySelector("#teams-console-refresh").onclick = () => refresh().catch((error) => toast(error.message));
+  image.onclick = (event) => {
+    const rect = image.getBoundingClientRect();
+    void action({ type: "click", x: (event.clientX - rect.left) * 1200 / rect.width, y: (event.clientY - rect.top) * 800 / rect.height }).catch((error) => toast(error.message));
+  };
+  modal.querySelectorAll("[data-teams-key]").forEach((button) => button.addEventListener("click", () => void action({ type: "key", key: button.dataset.teamsKey }).catch((error) => toast(error.message))));
+  modal.querySelector("#teams-console-text").onsubmit = (event) => {
+    event.preventDefault();
+    const input = event.currentTarget.elements.namedItem("text");
+    const text = input.value;
+    input.value = "";
+    void action({ type: "text", text }).catch((error) => toast(error.message));
+  };
+  modal.querySelector("#teams-console-nav").onsubmit = (event) => {
+    event.preventDefault();
+    void action({ type: "navigate", url: new FormData(event.currentTarget).get("url") }).catch((error) => toast(error.message));
+  };
+  try {
+    await refresh();
+  } catch (error) {
+    toast(error.message);
+  }
+}
 function bind() {
   bindDmContacts();
+  bindRelay();
+  bindTeamsBridge();
+  document.querySelectorAll("[data-tool-toggle]").forEach((input) => {
+    input.addEventListener("change", async () => {
+      const enabled = input.checked;
+      input.disabled = true;
+      try {
+        await api(`/tools/${input.dataset.toolToggle}`, {
+          method: "PUT",
+          body: { enabled },
+        });
+        toast(`${enabled ? "Đã bật" : "Đã tắt"} công cụ Bot`);
+        await render();
+      } catch (err) {
+        input.checked = !enabled;
+        input.disabled = false;
+        toast(err.message);
+      }
+    });
+  });
   document
     .querySelectorAll("[data-task]")
     .forEach(
@@ -1442,18 +1733,42 @@ function bind() {
   document.querySelectorAll("[data-calendar-shift]").forEach(
     (b) =>
       (b.onclick = () => {
-        calendarMonth = new Date(
-          calendarMonth.getFullYear(),
-          calendarMonth.getMonth() + Number(b.dataset.calendarShift),
-          1,
-        );
+        if (calendarView === "day") {
+          const selected = new Date(`${calendarSelectedDate}T00:00:00Z`);
+          selected.setUTCDate(selected.getUTCDate() + Number(b.dataset.calendarShift));
+          calendarSelectedDate = selected.toISOString().slice(0, 10);
+          calendarMonth = new Date(`${calendarSelectedDate}T12:00:00+07:00`);
+        } else {
+          calendarMonth = new Date(
+            calendarMonth.getFullYear(),
+            calendarMonth.getMonth() + Number(b.dataset.calendarShift),
+            1,
+          );
+        }
+        void render();
+      }),
+  );
+  document.querySelectorAll("[data-calendar-view]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        calendarView = b.dataset.calendarView;
+        void render();
+      }),
+  );
+  document.querySelectorAll("[data-calendar-select]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        calendarSelectedDate = b.dataset.calendarSelect;
+        calendarMonth = new Date(`${calendarSelectedDate}T12:00:00+07:00`);
+        calendarView = "day";
         void render();
       }),
   );
   document
     .querySelector("[data-calendar-today]")
     ?.addEventListener("click", () => {
-      calendarMonth = new Date();
+      calendarSelectedDate = localDateKey(Date.now());
+      calendarMonth = new Date(`${calendarSelectedDate}T12:00:00+07:00`);
       void render();
     });
   document
@@ -1614,7 +1929,15 @@ async function render({ background = false } = {}) {
     let html = "";
     if (page === "overview") html = overview();
     if (page === "channels") {
-      dmContactsData = await api("/zalo/contacts");
+      const [contacts, bridges, network, teamsState] = await Promise.all([
+        api("/zalo/contacts"),
+        api("/channel-bridges"),
+        api("/bridge-network"),
+        api("/bridge-network/teams/state").catch((error) => ({ error: error.message })),
+      ]);
+      dmContactsData = contacts;
+      relayData = bridges;
+      networkData = { ...network, teamsState };
       html = channels();
     }
     if (page === "calendar") {
@@ -1629,6 +1952,7 @@ async function render({ background = false } = {}) {
     if (page === "connections") {
       html = connections();
     }
+    if (page === "tools") html = toolsPage(await api("/tools"));
     if (page === "conversations") html = await conversations();
     if (page === "tasks")
       html =
@@ -1712,6 +2036,7 @@ setInterval(async () => {
         "tasks",
         "events",
         "connections",
+        "tools",
         "channels",
         "calendar",
       ].includes(page)

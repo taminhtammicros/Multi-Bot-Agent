@@ -31,6 +31,45 @@ export function parseOwnerGroupSend(text: string) {
   return { groupId: match[1], content };
 }
 
+function normalizeOwnerPollText(text: string) {
+  return text
+    .trim()
+    .replace(
+      /^@[^\n]{1,100}?\s+(?=(?:(?:hãy|vui lòng)\s+)?(?:tạo|lập)\s+(?:một\s+)?(?:poll|bình\s+chọn)\b)/i,
+      "",
+    );
+}
+
+export function isOwnerPollRequest(text: string) {
+  return /^(?:(?:hãy|vui lòng)\s+)?(?:tạo|lập)\s+(?:một\s+)?(?:poll|bình\s+chọn)\b/i.test(
+    normalizeOwnerPollText(text),
+  );
+}
+
+export function parseOwnerPoll(text: string, currentGroupId?: string) {
+  const match = normalizeOwnerPollText(text).match(
+    /^(?:(?:hãy|vui lòng)\s+)?(?:tạo|lập)\s+(?:một\s+)?(?:poll|bình\s+chọn)(?:\s+(?:trong\s+)?nhóm\s+(\d{5,30}))?\s*[:：]\s*([\s\S]+)$/i,
+  );
+  if (!match) return null;
+  const groupId = match[1] || currentGroupId;
+  const fields = match[2].split("|").map((part) => part.trim());
+  const question = fields.shift() || "";
+  const options = fields;
+  if (
+    !groupId ||
+    !/^\d{5,30}$/.test(groupId) ||
+    question.length < 3 ||
+    question.length > 250 ||
+    options.length < 2 ||
+    options.length > 10 ||
+    options.some((option) => !option || option.length > 100) ||
+    new Set(options.map((option) => option.toLocaleLowerCase())).size !==
+      options.length
+  )
+    return null;
+  return { groupId, question, options };
+}
+
 export async function isBotOwner(
   accountId: string | null | undefined,
   senderId: string | null | undefined,

@@ -118,9 +118,124 @@ a {
   padding: 0 14px;
   margin: 16px 0 10px;
 }
+.tools-card {
+  margin-top: 18px;
+}
+.tools-list {
+  padding: 0 20px;
+}
+.tool-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.tool-row:last-child {
+  border-bottom: 0;
+}
+.tool-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--accent);
+  background: #202630;
+}
+.tool-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tool-info h2 {
+  font-size: 15px;
+  margin: 0;
+}
+.tool-info p {
+  margin: 6px 0 0;
+}
+.tool-info .row {
+  flex-wrap: wrap;
+}
+.amber-text {
+  color: var(--amber);
+}
+.tool-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tool-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.tool-toggle i {
+  display: block;
+  width: 42px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: #252a34;
+  position: relative;
+  transition: background .16s ease;
+}
+.tool-toggle i::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  top: 3px;
+  border-radius: 50%;
+  background: #aab2c0;
+  transition: transform .16s ease, background .16s ease;
+}
+.tool-toggle input:checked + i {
+  background: #315b46;
+  border-color: #477a5e;
+}
+.tool-toggle input:checked + i::after {
+  transform: translateX(18px);
+  background: var(--accent);
+}
+.tool-toggle input:focus-visible + i {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.tools-integrations {
+  margin-top: 18px;
+}
+@media (max-width: 680px) {
+  .tool-row {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 12px;
+  }
+  .tool-icon {
+    width: 36px;
+    height: 36px;
+  }
+  .tool-toggle {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
 .nav {
   display: grid;
   gap: 5px;
+  min-height: 0;
+  overflow-y: auto;
 }
 .nav a {
   color: var(--muted);
@@ -1071,6 +1186,60 @@ dialog form {
 .calendar-toolbar button {
   padding: 8px 12px;
 }
+.calendar-view-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.calendar-view-toggle button {
+  padding: 6px 12px;
+}
+.calendar-date-select {
+  border: 0;
+  background: transparent;
+  padding: 2px 5px;
+  font-weight: 650;
+}
+.calendar-date-select:hover {
+  color: var(--accent);
+  background: #20252e;
+}
+.calendar-day-agenda {
+  display: grid;
+  gap: 8px;
+  padding: 8px 18px 18px;
+  min-height: 240px;
+}
+.calendar-agenda-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+  padding: 15px 16px;
+  border-left: 3px solid var(--accent);
+  background: #202630;
+}
+.calendar-agenda-item.paused {
+  border-left-color: var(--muted);
+  opacity: .72;
+}
+.calendar-agenda-time {
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--accent);
+}
+.calendar-agenda-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.calendar-agenda-copy small {
+  color: var(--muted);
+}
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -1084,6 +1253,60 @@ dialog form {
   color: var(--muted);
   font-size: 11px;
   text-align: center;
+}
+.bridge-card {
+  margin: 18px 0;
+}
+.bridge-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+  margin-top: 18px;
+}
+.bridge-form label {
+  min-width: 0;
+}
+.bridge-list {
+  border-top: 1px solid var(--line);
+}
+.bridge-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 20px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.bridge-row:last-child {
+  border-bottom: 0;
+}
+.bridge-main {
+  min-width: 0;
+}
+.bridge-main .row {
+  flex-wrap: wrap;
+}
+.bridge-main .row strong {
+  overflow-wrap: anywhere;
+}
+.bridge-controls {
+  display: grid;
+  align-content: center;
+  gap: 9px;
+}
+.bridge-controls .check {
+  margin: 0;
+}
+.bridge-controls button {
+  justify-self: start;
+}
+@media (max-width: 760px) {
+  .bridge-form {
+    grid-template-columns: 1fr;
+  }
+  .bridge-row {
+    grid-template-columns: 1fr;
+  }
 }
 .calendar-day {
   min-height: 112px;
@@ -1176,6 +1399,34 @@ dialog form {
 .calendar-form-row label {
   flex: 1;
 }
+.calendar-times {
+  margin: 14px 0 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.calendar-times legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+.calendar-time-row {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.calendar-time-row label {
+  flex: 1;
+  margin: 0;
+}
+.calendar-time-row button {
+  min-width: 38px;
+  min-height: 38px;
+  margin-bottom: 2px;
+}
+.calendar-times [data-time-add] {
+  margin: 4px 0;
+}
 #dm-contacts [data-chat-settings] {
   display: block;
   margin-bottom: 7px;
@@ -1201,7 +1452,19 @@ dialog form {
     flex-wrap: wrap;
   }
   .calendar-toolbar h2 {
-    min-width: 40%;
+    min-width: 100%;
+    order: -1;
+  }
+  .calendar-view-toggle {
+    margin-left: auto;
+  }
+  .calendar-agenda-item {
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .calendar-agenda-item > .badge {
+    grid-column: 2;
+    justify-self: start;
   }
   .calendar-date {
     min-width: 82px;
@@ -1234,3 +1497,23 @@ dialog form {
     padding: 12px;
   }
 }
+
+.relay-panel {margin-top:24px;overflow:hidden;}
+.relay-guide {padding-left:22px;line-height:1.7;}
+.relay-guide li {margin-bottom:8px;}
+.relay-form {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:20px;}
+.relay-form .row,.relay-form>p {grid-column:1/-1;}
+.relay-form label {min-width:0;}
+.relay-endpoints {display:block;margin-top:6px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere;}
+.relay-actions {flex-wrap:wrap;}
+.teams-bridge-panel .card-head {gap:14px;flex-wrap:wrap;}
+.teams-connect-form,.teams-member-form {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px;align-items:end;}
+.teams-connect-form label,.teams-member-form label {min-width:0;}
+.teams-member-setup {border-top:1px solid var(--line);}
+.teams-member-setup h3 {margin-top:0;}
+.teams-member-form .row,.teams-member-form>p {grid-column:1/-1;}
+.teams-member-form .row {flex-wrap:wrap;}
+.teams-member-form .check {display:flex;align-items:center;gap:8px;}
+.teams-member-form .check input {width:auto;}
+.teams-screen {display:block;width:100%;max-width:1200px;height:auto;border:1px solid var(--line);margin:12px 0;cursor:crosshair;}
+@media(max-width:760px){.relay-form,.teams-connect-form,.teams-member-form{grid-template-columns:1fr;}.teams-bridge-panel .card-head{align-items:flex-start;}}

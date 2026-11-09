@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS agents (
  last_checked timestamptz, last_ok timestamptz, latency_ms int, error text
 );
 INSERT INTO agents(id,base_url,model) VALUES ('hermes','http://127.0.0.1:8642/v1','hermes-agent'),('openclaw','http://127.0.0.1:18789/v1','openclaw') ON CONFLICT DO NOTHING;
-INSERT INTO settings VALUES ('routing','{"preferred":"auto","failureThreshold":3,"recoverySeconds":60,"paused":false}'),('zalo','{"allowUsers":[],"allowGroups":[],"groupsEnabled":false}'),('telegram','{}') ON CONFLICT DO NOTHING;
+INSERT INTO settings VALUES ('routing','{"preferred":"auto","failureThreshold":3,"recoverySeconds":60,"paused":false}'),('zalo','{"allowUsers":[],"allowGroups":[],"groupsEnabled":false}'),('telegram','{}'),('bot_tools','{"image_reading":true,"file_creation":true,"poll_creation":true,"scheduled_tasks":true,"knowledge_sources":true}') ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS zalo_account_policies (
  account_id text PRIMARY KEY,
  policy jsonb NOT NULL DEFAULT '{"allowUsers":[],"allowGroups":[],"groupsEnabled":false}',
@@ -36,8 +36,15 @@ CREATE TABLE IF NOT EXISTS calendar_jobs (
  locked_at timestamptz, last_run_at timestamptz, last_task_id uuid REFERENCES tasks(id),
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE calendar_jobs ADD COLUMN IF NOT EXISTS run_times text[] NOT NULL DEFAULT '{}';
+UPDATE calendar_jobs SET run_times=ARRAY[to_char(next_run_at AT TIME ZONE 'Asia/Ho_Chi_Minh','HH24:MI')]
+ WHERE cardinality(run_times)=0;
 CREATE INDEX IF NOT EXISTS calendar_jobs_due ON calendar_jobs(next_run_at) WHERE enabled;
 CREATE TABLE IF NOT EXISTS outbox(id uuid PRIMARY KEY, task_id uuid NOT NULL UNIQUE REFERENCES tasks(id), conversation_id text NOT NULL REFERENCES conversations(id), content text NOT NULL, status text NOT NULL DEFAULT 'pending', error text, created_at timestamptz DEFAULT now());
+CREATE TABLE IF NOT EXISTS artifacts(id uuid PRIMARY KEY, task_id uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, filename text NOT NULL, mime_type text NOT NULL, path text NOT NULL, size bigint NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS artifacts_task ON artifacts(task_id);
+CREATE TABLE IF NOT EXISTS inbound_images(id uuid PRIMARY KEY, message_id uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE, mime_type text NOT NULL, path text NOT NULL, size bigint NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS inbound_images_message ON inbound_images(message_id);
 CREATE TABLE IF NOT EXISTS leadership(id int PRIMARY KEY CHECK(id=1), agent text, generation bigint NOT NULL DEFAULT 0, changed_at timestamptz DEFAULT now());
 INSERT INTO leadership(id) VALUES (1) ON CONFLICT DO NOTHING;
 CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversation_id,created_at);
@@ -132,6 +139,8 @@ CREATE TABLE IF NOT EXISTS owner_group_sends (
  sent_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS owner_group_sends_pending ON owner_group_sends(status,created_at);
+ALTER TABLE owner_group_sends ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'message';
+ALTER TABLE owner_group_sends ADD COLUMN IF NOT EXISTS payload jsonb;
 CREATE TABLE IF NOT EXISTS telegram_link_codes (
  code_hash text PRIMARY KEY,
  expires_at timestamptz NOT NULL,

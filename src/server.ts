@@ -27,6 +27,13 @@ import {
 } from "./knowledge.js";
 import { guardStatus, policyDir, needsGuard } from "./command-guard.js";
 import { decrypt } from "./security.js";
+import { readArtifact } from "./artifacts.js";
+import { botToolEnabled, getBotToolSettings, setBotToolEnabled, type BotToolId } from "./tools.js";
+import { BridgeNetwork } from "./bridge-network.js";
+import { BridgeConnectors } from "./bridge-connectors.js";
+import { TeamsPersonal } from "./teams-personal.js";
+import { registerBridgeRoutes } from "./bridge-routes.js";
+import { ChannelRelay } from "./channel-relay.js";
 import { resolve } from "node:path";
 import Fastify from "fastify";
 import cookie from "@fastify/cookie";
@@ -89,6 +96,38 @@ const sessions = new Map<string, number>(),
 const bridge = new ZaloBridge(),
   telegram = new TelegramBridge(),
   engine = new Engine();
+const relayPorts = {
+  runtime: async () => {
+    const identity = await telegram.relayIdentity();
+    return {
+      zaloAccountId: bridge.state().accountId || null,
+      zaloConnected: bridge.state().status === "connected",
+      telegramBotId: identity.botId,
+      telegramReceiving: identity.receiving,
+    };
+  },
+  checkTelegram: (chatId: string) => telegram.checkRelayGroup(chatId),
+  telegramFile: (fileId: string) => telegram.relayFile(fileId),
+  sendZalo: (chatId: string, text: string, path?: string) =>
+    bridge.sendRelay(chatId, text, path),
+  sendTelegram: (
+    chatId: string,
+    text: string,
+    media?: import("./bridge-types.js").BinaryMedia,
+  ) => telegram.sendRelay(chatId, text, media),
+};
+const relay = new ChannelRelay(relayPorts);
+const teamsPersonal = new TeamsPersonal();
+const networkConnectors = new BridgeConnectors(teamsPersonal);
+const bridgeNetwork = new BridgeNetwork(networkConnectors, relayPorts);
+await bridgeNetwork.recover();
+await relay.recover();
+const relayIncoming = async (envelope: import("./relay-input.js").RelayEnvelope) => {
+  await relay.enqueue(envelope);
+  await bridgeNetwork.enqueue(envelope);
+};
+bridge.onRelayMessage = relayIncoming;
+telegram.onRelayMessage = relayIncoming;
 let dbError = false;
 app.addHook("onRequest", async (req, reply) => {
   reply
@@ -206,6 +245,40 @@ app.get("/api/overview", async () => {
     },
   };
 });
+app.get("/api/tools", async () => {
+  const [settings, agents, telegramState] = await Promise.all([
+    getBotToolSettings(),
+    query("SELECT id,enabled,health FROM agents ORDER BY id"),
+    telegram.state(),
+  ]);
+  const hasOnlineAgent = agents.rows.some(
+    (agent) => agent.enabled && agent.health === "online",
+  );
+  const zaloOnline = bridge.state().status === "connected";
+  const definitions = [
+    { id: "image_reading", name: "Đọc ảnh", category: "AI", description: "Đính kèm ảnh Zalo vào yêu cầu để Agent phân tích nội dung hình ảnh.", ready: hasOnlineAgent, readyReason: hasOnlineAgent ? "Có Agent đang online; khả năng nhận diện còn tùy model." : "Cần kết nối ít nhất một Agent." },
+    { id: "file_creation", name: "Tạo và gửi tệp", category: "AI", description: "Nhận file Markdown, TXT, DOCX, XLSX hoặc PPTX từ Agent và gửi vào hội thoại.", ready: hasOnlineAgent && zaloOnline, readyReason: !hasOnlineAgent ? "Cần kết nối ít nhất một Agent." : !zaloOnline ? "Cần kết nối Zalo để gửi file." : "Agent và Zalo đang sẵn sàng." },
+    { id: "poll_creation", name: "Tạo Poll Zalo", category: "Zalo", description: "Tạo Poll trong nhóm đã cấp quyền sau khi yêu cầu được Owner xác nhận.", ready: zaloOnline, readyReason: zaloOnline ? "Tài khoản Zalo đang kết nối." : "Cần kết nối tài khoản Zalo." },
+    { id: "scheduled_tasks", name: "Lịch và tác vụ định kỳ", category: "Tự động hóa", description: "Chạy yêu cầu theo lịch và gửi kết quả vào DM/nhóm đã cấp quyền.", ready: hasOnlineAgent && zaloOnline, readyReason: !hasOnlineAgent ? "Cần kết nối ít nhất một Agent." : !zaloOnline ? "Lịch đã tích hợp; cần Zalo online để gửi kết quả." : "Bộ lập lịch, Agent và Zalo đang sẵn sàng." },
+    { id: "knowledge_sources", name: "Tri thức theo hội thoại", category: "Ngữ cảnh", description: "Đọc ghi chú, tệp và nguồn tri thức đã gắn riêng cho DM/nhóm hiện tại.", ready: true, readyReason: "Bộ nạp tri thức cục bộ đã được tích hợp." },
+  ] as const;
+  return {
+    tools: definitions.map((tool) => ({ ...tool, enabled: settings[tool.id as BotToolId] })),
+    integrations: {
+      hermes: agents.rows.find((agent) => agent.id === "hermes") || null,
+      openclaw: agents.rows.find((agent) => agent.id === "openclaw") || null,
+      zalo: bridge.state(),
+      telegram: telegramState,
+    },
+  };
+});
+app.put("/api/tools/:id", async (req) => {
+  const { id } = z.object({ id: z.enum(["image_reading", "file_creation", "poll_creation", "scheduled_tasks", "knowledge_sources"]) }).parse(req.params);
+  const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
+  const settings = await setBotToolEnabled(id, enabled);
+  await event("config", `${enabled ? "Bật" : "Tắt"} công cụ Bot: ${id}`);
+  return { ok: true, enabled: settings[id] };
+});
 const agentInput = z.object({
   enabled: z.boolean(),
   baseUrl: z
@@ -316,9 +389,8 @@ app.get("/api/chat-profile/:kind/:uid", async (req) => {
     profile: await getChatProfile(s.accountId, s.kind, s.uid),
     sources: await sourceList(s.accountId, s.kind, s.uid),
     guard: await guardStatus(),
-    agents: (
-      await query("SELECT id,enabled,health FROM agents ORDER BY id")
-    ).rows,
+    agents: (await query("SELECT id,enabled,health FROM agents ORDER BY id"))
+      .rows,
   };
 });
 app.put("/api/chat-profile/:kind/:uid", async (req) => {
@@ -568,7 +640,11 @@ app.get("/api/agents/:id/catalog", async (req) => {
           }))
       : [];
     if (a.model && !models.some((model: any) => model.id === a.model))
-      models.unshift({ id: a.model, label: a.model + " · hiện tại", provider: "" });
+      models.unshift({
+        id: a.model,
+        label: a.model + " · hiện tại",
+        provider: "",
+      });
     return { models: models.slice(0, 1000) };
   }
 
@@ -641,6 +717,25 @@ app.put("/api/telegram", async (req) => {
 app.delete("/api/telegram", async () => telegram.disconnect());
 app.post("/api/telegram/link", async () => telegram.createLink());
 app.post("/api/telegram/test", async () => telegram.test());
+await registerBridgeRoutes(app, bridgeNetwork, networkConnectors, teamsPersonal);
+app.get("/api/channel-bridges", async () => relay.view());
+app.post("/api/channel-bridges", async (req) => relay.create(req.body));
+app.patch("/api/channel-bridges/:id", async (req) =>
+  relay.update(z.uuid().parse((req.params as any).id), req.body),
+);
+app.delete("/api/channel-bridges/:id", async (req) =>
+  relay.remove(z.uuid().parse((req.params as any).id)),
+);
+app.post("/api/channel-bridges/telegram-group/check", async (req) => {
+  const { chatId } = z
+    .object({ chatId: z.string().regex(/^-\d{1,20}$/) })
+    .strict()
+    .parse(req.body);
+  return telegram.checkRelayGroup(chatId);
+});
+app.get("/api/channel-bridges/:id/history", async (req) =>
+  relay.history(z.uuid().parse((req.params as any).id)),
+);
 app.get("/api/zalo/contacts", async () =>
   listContacts(bridge.state().accountId || null),
 );
@@ -745,12 +840,15 @@ const calendarInput = z.object({
   threadType: z.union([z.literal(0), z.literal(1)]),
   runAt: z.string().max(16),
   recurrence: z.enum(["once", "daily", "weekly"]),
+  runTimes: z.array(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)).max(24).optional(),
 });
 app.get("/api/calendar", async () => ({ jobs: await listCalendar() }));
 app.get("/api/calendar/targets", async () =>
   calendarTargets(bridge.state().accountId || null),
 );
 app.post("/api/calendar", async (req) => {
+  if (!(await botToolEnabled("scheduled_tasks")))
+    throw Object.assign(new Error("Lịch và tác vụ định kỳ đang tắt trong trang TOOLS."), { statusCode: 409 });
   const data = calendarInput.parse(req.body);
   const accountId = bridge.state().accountId;
   if (!accountId)
@@ -770,6 +868,8 @@ app.post("/api/calendar", async (req) => {
   return { ok: true };
 });
 app.put("/api/calendar/:id", async (req) => {
+  if (!(await botToolEnabled("scheduled_tasks")))
+    throw Object.assign(new Error("Lịch và tác vụ định kỳ đang tắt trong trang TOOLS."), { statusCode: 409 });
   const { id } = z.object({ id: z.uuid() }).parse(req.params);
   const data = calendarInput.parse(req.body);
   const accountId = bridge.state().accountId;
@@ -792,6 +892,8 @@ app.put("/api/calendar/:id", async (req) => {
 app.post("/api/calendar/:id/toggle", async (req) => {
   const { id } = z.object({ id: z.uuid() }).parse(req.params);
   const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
+  if (enabled && !(await botToolEnabled("scheduled_tasks")))
+    throw Object.assign(new Error("Không thể bật lịch khi công cụ lịch đang tắt trong trang TOOLS."), { statusCode: 409 });
   await setCalendarEnabled(id, enabled);
   return { ok: true };
 });
@@ -813,10 +915,25 @@ app.get("/api/conversations/:id/messages", async (req) => {
   const { id } = req.params as any;
   return (
     await query(
-      "SELECT * FROM (SELECT * FROM messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 500) recent ORDER BY created_at",
+      "SELECT recent.*, COALESCE((SELECT json_agg(json_build_object('id',a.id,'filename',a.filename,'size',a.size) ORDER BY a.created_at,a.id) FROM tasks t JOIN artifacts a ON a.task_id=t.id WHERE t.message_id=recent.id),'[]'::json) AS artifacts FROM (SELECT * FROM messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 500) recent ORDER BY created_at",
       [id],
     )
   ).rows;
+});
+app.get("/api/artifacts/:id", async (req, reply) => {
+  const { id } = z.object({ id: z.uuid() }).parse(req.params);
+  const artifact = await readArtifact(id);
+  if (!artifact) return reply.code(404).send({ error: "Không tìm thấy tệp" });
+  const name = String(artifact.filename).replace(/[\r\n"\\]/g, "_");
+  const fallbackName = name.replace(/[^\x20-\x7E]/g, "_");
+  return reply
+    .type(artifact.mime_type)
+    .header("Content-Length", String(artifact.size))
+    .header(
+      "Content-Disposition",
+      `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+    )
+    .send(artifact.data);
 });
 app.post("/api/chat", async (req) => {
   const data = z
@@ -1071,7 +1188,11 @@ const healthTimer = setInterval(async () => {
     if (!engine.busy) await reconcile();
     const zaloConnected = bridge.state().status === "connected";
     const zaloAccountId = bridge.state().accountId || null;
-    if (zaloConnected && zaloAccountId && zaloAccountId !== observedZaloAccountId) {
+    if (
+      zaloConnected &&
+      zaloAccountId &&
+      zaloAccountId !== observedZaloAccountId
+    ) {
       const policy = await getZaloPolicy(zaloAccountId);
       if (
         !policy.policyConfigured &&
@@ -1128,6 +1249,19 @@ const sendTimer = setInterval(async () => {
     sending = false;
   }
 }, 500);
+const relayTimer = setInterval(() => {
+  void relay.flush().catch(() => {
+    dbError = true;
+  });
+}, 500);
+const networkTimer = setInterval(() => {
+  void bridgeNetwork.flush().catch(() => {
+    dbError = true;
+  });
+  void bridgeNetwork.poll().catch(() => {
+    dbError = true;
+  });
+}, 500);
 void (async function pollTelegram() {
   while (true) await telegram.pollOnce();
 })();
@@ -1144,6 +1278,9 @@ async function shutdown() {
   clearInterval(brainTimer);
   clearInterval(workTimer);
   clearInterval(sendTimer);
+  clearInterval(relayTimer);
+  clearInterval(networkTimer);
+  await teamsPersonal.close();
   bridge.shutdown();
   await app.close();
   await query("UPDATE leadership SET generation=generation+1 WHERE id=1");

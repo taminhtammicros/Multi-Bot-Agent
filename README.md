@@ -73,6 +73,7 @@ Không chạy plugin Zalo khác hay Zalo Web cùng tài khoản với bridge nà
 - Chỉ cấu hình endpoint tin cậy: agent có thể có quyền công cụ trên máy đang chạy nó. Ứng dụng không cài, sửa hay khởi động lại agent hiện có.
 
 Tài liệu nguồn:
+
 - https://github.com/RFS-ADRENO/zca-js
 - https://docs.openclaw.ai/gateway/openai-http-api
 - https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server
@@ -119,11 +120,11 @@ Danh sách **Quyền trò chuyện với bot** có bộ lọc **Người dùng /
 
 Cột **Chế độ trả lời** áp dụng riêng cho từng DM/nhóm và lưu trong `zalo_reply_rules`:
 
-| Chế độ | Hành vi |
-|---|---|
+| Chế độ          | Hành vi                                                                                                                                                                          |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Tag mới trả lời | Chỉ xử lý tin có @mention đúng UID bot trong metadata Zalo. Gõ tên bot thường, tag người khác hoặc @all không kích hoạt. DM thông thường không có mention sẽ không được trả lời. |
-| Im lặng | Không xếp việc cho agent và không gửi phản hồi. Vẫn ghi nhận metadata người gửi/nhóm để quản trị. |
-| Hóng chuyện | Xử lý mọi tin text được hỗ trợ, trừ tin của chính bot để tránh vòng lặp. |
+| Im lặng         | Không xếp việc cho agent và không gửi phản hồi. Vẫn ghi nhận metadata người gửi/nhóm để quản trị.                                                                                |
+| Hóng chuyện     | Xử lý mọi tin text được hỗ trợ, trừ tin của chính bot để tránh vòng lặp.                                                                                                         |
 
 - Chọn Tag/Hóng sẽ cấp quyền tương ứng cho dòng đó; chọn Im lặng thu hồi quyền và giữ dòng trong danh sách để bật lại. Không thay đổi dòng khác hay công tắc nhóm toàn cục.
 - Công tắc nhóm là điều kiện toàn cục: khi tắt, mọi nhóm đều không được phản hồi, bất kể chế độ trên dòng.
@@ -140,6 +141,20 @@ PostgreSQL giữ hội thoại, bộ nhớ theo hội thoại, nhiệm vụ cha/
 Ngữ cảnh hiện tại gồm **60 tin gần nhất**, tối đa 30 mục bộ nhớ đã xác nhận và 10 kết quả công việc gần đây, luôn giới hạn theo hội thoại. Lịch sử đầy đủ vẫn nằm trong database. Chưa có tóm tắt tự động cho hội thoại rất dài; dùng **Bộ nhớ chung** để lưu các quyết định cần giữ lâu dài. Không tuyên bố hai agent suy luận giống hệt nhau.
 
 Hàng đợi xử lý tối đa hai hội thoại song song, giữ một lượt đang chạy trong mỗi hội thoại và đúng thứ tự. Công việc `review` được giữ để đối soát và không tự chạy lại, nhưng không khóa câu hỏi mới. Ngữ cảnh nhắc agent không lặp hành động chưa rõ kết quả. Outbox gửi độc lập với các lượt AI chạy lâu; lỗi AI có thông báo riêng cho người dùng Zalo. Tác vụ không có Main khả dụng vẫn nằm trong hàng đợi. Nhấn tạm dừng chỉ chặn lượt mới, không hủy tác vụ đã gửi agent và không chặn outbox gửi kết quả.
+
+### Agent tạo tệp trả về Zalo
+
+Khi yêu cầu tạo tệp, Agent có thể trả marker `[[ZALO_ARTIFACTS_V1]]` theo sau bởi JSON: `{"text":"Mô tả ngắn","artifacts":[{"filename":"bao-cao.docx","mimeType":"application/vnd.openxmlformats-officedocument.wordprocessingml.document","dataBase64":"..."}]}`. Hỗ trợ `.md`, `.txt`, `.docx`, `.xlsx`, `.pptx`; Office files phải có cấu trúc Open XML ZIP. Hub giới hạn 5 tệp, 8 MB mỗi tệp và 12 MB tổng, làm sạch tên tệp, lưu riêng trong `data/artifacts`, gắn với task rồi gửi bằng Zalo attachment cùng câu trả lời. Kết quả đã lưu có thể tải từ Hội thoại & ngữ cảnh trong Dashboard.
+
+Không gửi đường dẫn local do Agent cung cấp. Với Agent ở máy khác, cần trả nội dung Base64 theo envelope này; đường dẫn local của Agent không truy cập được từ Hub. Thư mục `data` nên được giữ trong volume và đưa vào backup phù hợp.
+
+### Đọc ảnh gửi qua Zalo
+
+Tin `chat.photo` từ DM/nhóm đã được cấp quyền sẽ tải từ CDN Zalo HTTPS theo allowlist, kiểm tra loại ảnh và giới hạn dung lượng, lưu riêng trong `data/inbound-images`, rồi đính kèm vào lượt Agent theo OpenAI-compatible `image_url` dạng data URL. Hỗ trợ JPG, PNG, WebP và GIF; tối đa 6 MB mỗi ảnh, 12 MB tổng. Model được chọn phải hỗ trợ vision; nội dung trong ảnh được xem là dữ liệu, không phải chỉ dẫn hệ thống. Ảnh không tải được sẽ được báo rõ, không gửi yêu cầu chỉ với placeholder để tránh Agent đoán.
+
+### Tạo Poll trong nhóm Zalo
+
+Bot Owner có thể yêu cầu `Tạo poll: Câu hỏi? | Lựa chọn 1 | Lựa chọn 2` ngay trong nhóm đã cấp quyền; trong DM dùng `Tạo poll nhóm <ID>: Câu hỏi? | Lựa chọn 1 | Lựa chọn 2`. Có từ 2 đến 10 lựa chọn, mỗi lựa chọn tối đa 100 ký tự. Nếu yêu cầu rõ và nhóm được cấp quyền, Hub tạo Poll ngay; thiếu thông tin thì Bot hỏi lại. Tác vụ được lưu bền vững và có thể tạo Poll khi cả Hermes lẫn OpenClaw đang offline.
 
 ## Failover và BCP hiện có
 
@@ -203,6 +218,8 @@ Có thể đặt `CHROME_PATH` trỏ đến Chromium có sẵn. Screenshot lưu 
 Cấu hình tính cách, tri thức, model, chất lượng, màu/emoji, quyền lệnh và lời chào theo từng nhóm/DM: xem [hướng dẫn cấu hình hội thoại](docs/CHAT-PROFILES.md).
 
 Kết nối OpenClaw đã cài trên máy bằng gateway riêng cho Hub: xem [hướng dẫn OpenClaw](docs/OPENCLAW.md), chạy `npm run openclaw:connect`.
+
+Thiết lập phòng chat liên thông Zalo ↔ Telegram ↔ Teams Personal trên Local Host: xem [hướng dẫn Channel Bridge local](docs/CHANNEL-BRIDGE-LOCAL.md). Dashboard chạy ở `http://127.0.0.1:3890/#channels`; Teams Personal có thể attach Brave VPS qua SSH tunnel CDP loopback.
 
 - `src/server.ts`: dashboard API, đăng nhập, cấu hình, timer.
 - `src/engine.ts`: hàng đợi, ngữ cảnh, giao việc, ghi kết quả.
